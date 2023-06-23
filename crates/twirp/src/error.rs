@@ -116,10 +116,10 @@ impl Serialize for TwirpErrorCode {
 // Twirp error responses are always JSON
 #[derive(Debug, Serialize)]
 pub struct TwirpErrorResponse {
-    pub(crate) code: TwirpErrorCode,
-    pub(crate) msg: String,
+    pub code: TwirpErrorCode,
+    pub msg: String,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub(crate) meta: HashMap<String, Value>,
+    pub meta: HashMap<String, Value>,
 }
 
 impl TwirpErrorResponse {
