@@ -1,0 +1,12 @@
+[package]
+name = "twirp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures = "0.3"
+hyper = { version = "0.14", features = ["full"] }
+prost = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"

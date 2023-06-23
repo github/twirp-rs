@@ -1,0 +1,5 @@
+/target
+/crates/*/target
+/example/*/target
+heaptrack.*
+.DS_Store
