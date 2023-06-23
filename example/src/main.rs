@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
 use hyper::service::{make_service_fn, service_fn};
@@ -41,6 +42,17 @@ struct HaberdasherAPIServer;
 impl haberdash::HaberdasherAPI for HaberdasherAPIServer {
     async fn make_hat(&self, req: MakeHatRequest) -> Result<MakeHatResponse, TwirpErrorResponse> {
         println!("got {:?}", req);
-        todo!()
+        let ts = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        Ok(MakeHatResponse {
+            color: "black".to_string(),
+            name: "top hat".to_string(),
+            size: req.inches,
+            timestamp: Some(prost_wkt_types::Timestamp {
+                seconds: ts.as_secs() as i64,
+                nanos: 0,
+            }),
+        })
     }
 }

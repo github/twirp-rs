@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 package service.haberdash.v1;
 option go_package = "haberdash.v1";
 
@@ -26,4 +28,7 @@ message MakeHatResponse {
 
   // The name of a hat is it's type. Like, 'bowler', or something.
   string name = 3;
+
+  // Demonstrate importing an external message.
+  google.protobuf.Timestamp timestamp = 4;
 }
