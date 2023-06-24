@@ -10,9 +10,10 @@ use serde::Serialize;
 pub mod error;
 pub use error::*;
 
-pub type HandlerResponse =
+type HandlerResponse =
     Box<dyn Future<Output = Result<Response<Body>, GenericError>> + Unpin + Send>;
-pub type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
+
+type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
 
 #[derive(Default)]
 pub struct Router {
@@ -72,12 +73,6 @@ impl Router {
         let key = (Method::POST, path.to_string());
         self.routes.insert(key, Box::new(g));
     }
-}
-
-pub fn add_health_checks(router: &mut Router) {
-    router.add_handler(Method::GET, "/_ping", |_req| {
-        Ok(Response::new(Body::from("Pong\n")))
-    });
 }
 
 pub async fn serve(table: Arc<Router>, req: Request<Body>) -> Result<Response<Body>, GenericError> {

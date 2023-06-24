@@ -3,7 +3,7 @@ use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
 use hyper::service::{make_service_fn, service_fn};
-use hyper::Server;
+use hyper::{Body, Method, Response, Server};
 use twirp::{invalid_argument, GenericError, Router, TwirpErrorResponse};
 
 pub mod service {
@@ -17,10 +17,12 @@ use service::haberdash::v1::{self as haberdash, MakeHatRequest, MakeHatResponse}
 
 #[tokio::main]
 pub async fn main() {
-    let example = Arc::new(HaberdasherAPIServer {});
     let mut router = Router::default();
+    let example = Arc::new(HaberdasherAPIServer {});
     haberdash::add_service(&mut router, example.clone());
-    twirp::add_health_checks(&mut router);
+    router.add_handler(Method::GET, "/_ping", |_req| {
+        Ok(Response::new(Body::from("Pong\n")))
+    });
     println!("{router:?}");
     let router = Arc::new(router);
     let service = make_service_fn(move |_| {

@@ -1,5 +1,6 @@
 use std::fmt::Write;
 
+/// Generates twirp services for protobuf rpc service definitions.
 pub fn service_generator() -> Box<ServiceGenerator> {
     Box::new(ServiceGenerator {})
 }
