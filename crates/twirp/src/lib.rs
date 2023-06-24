@@ -85,7 +85,7 @@ pub async fn serve(table: Arc<Router>, req: Request<Body>) -> Result<Response<Bo
     if let Some(handler) = table.routes.get(&key) {
         handler(req).await.or_else(|err| {
             tracing::error!(?err, path=?key.1, "internal server error");
-            internal("interal server error").to_response()
+            internal("internal server error").to_response()
         })
     } else {
         tracing::error!(path=?key.1, "no handler registered for path");
