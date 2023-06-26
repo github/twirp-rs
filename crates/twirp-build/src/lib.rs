@@ -1,6 +1,18 @@
 use std::fmt::Write;
 
 /// Generates twirp services for protobuf rpc service definitions.
+///
+/// In your `build.rs`, using `prost_build`, you can wire in the twirp
+/// `ServiceGenerator` to produce a Rust server for your proto services.
+///
+/// ```
+/// fn main() {
+///    prost_build::Config::new()
+///        .service_generator(twirp_build::service_generator())
+///        .compile_protos(&["./service.proto"], &["./"])
+///        .expect("error compiling protos");
+/// }
+/// ```
 pub fn service_generator() -> Box<ServiceGenerator> {
     Box::new(ServiceGenerator {})
 }

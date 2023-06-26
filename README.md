@@ -63,5 +63,6 @@ pub async fn main() {
         let router = router.clone();
         async { Ok::<_, GenericError>(service_fn(move |req| twirp::serve(router.clone(), req))) }
     });
+    // ... now start the server...
 }
 ```

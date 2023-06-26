@@ -89,14 +89,14 @@ pub async fn serve(table: Arc<Router>, req: Request<Body>) -> Result<Response<Bo
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub enum BodyFormat {
+enum BodyFormat {
     #[default]
     JsonPb,
     Pb,
 }
 
 impl BodyFormat {
-    pub fn from_content_type(req: &Request<Body>) -> BodyFormat {
+    fn from_content_type(req: &Request<Body>) -> BodyFormat {
         match req
             .headers()
             .get(header::CONTENT_TYPE)
