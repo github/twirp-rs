@@ -5,13 +5,14 @@ use std::fmt::Write;
 /// In your `build.rs`, using `prost_build`, you can wire in the twirp
 /// `ServiceGenerator` to produce a Rust server for your proto services.
 ///
+/// Add a call to `.service_generator(twirp_build::service_generator())` in
+/// main() of `build.rs`:
+///
 /// ```
-/// fn main() {
-///    prost_build::Config::new()
-///        .service_generator(twirp_build::service_generator())
-///        .compile_protos(&["./service.proto"], &["./"])
-///        .expect("error compiling protos");
-/// }
+/// prost_build::Config::new()
+///    .service_generator(twirp_build::service_generator())
+///    .compile_protos(&["./service.proto"], &["./"])
+///    .expect("error compiling protos");
 /// ```
 pub fn service_generator() -> Box<ServiceGenerator> {
     Box::new(ServiceGenerator {})
