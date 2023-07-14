@@ -12,6 +12,8 @@ pub mod test;
 pub use error::*;
 pub use server::*;
 
+pub use url;
+
 pub(crate) fn to_proto_body<T>(m: T) -> hyper::Body
 where
     T: prost::Message,
