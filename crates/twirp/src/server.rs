@@ -119,19 +119,13 @@ async fn parse_request<T>(req: Request<Body>) -> Result<(T, BodyFormat), Generic
 where
     T: prost::Message + Default + DeserializeOwned,
 {
-    let request_format = BodyFormat::from_content_type(&req);
-
-    let response_format = match req.headers().get(header::ACCEPT).map(|x| x.as_bytes()) {
-        Some(CONTENT_TYPE_PROTOBUF) => BodyFormat::Pb,
-        _ => BodyFormat::JsonPb,
-    };
-
+    let format = BodyFormat::from_content_type(&req);
     let bytes = hyper::body::to_bytes(req.into_body()).await?;
-    let request = match request_format {
+    let request = match format {
         BodyFormat::Pb => T::decode(bytes)?,
         BodyFormat::JsonPb => serde_json::from_slice(&bytes)?,
     };
-    Ok((request, response_format))
+    Ok((request, format))
 }
 
 fn write_response<T>(
