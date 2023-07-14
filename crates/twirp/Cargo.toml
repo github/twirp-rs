@@ -1,7 +1,14 @@
 [package]
 name = "twirp"
 version = "0.1.0"
+authors = ["The blackbird team <support@github.com>"]
 edition = "2021"
+
+[features]
+default = ["client", "server", "test-support"]
+test-support = ["dep:async-trait"]
+client = ["dep:reqwest", "dep:url"]
+server = []
 
 [dependencies]
 futures = "0.3"
@@ -9,4 +16,15 @@ hyper = { version = "0.14", features = ["full"] }
 prost = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tracing = "0.1"
+thiserror = "1.0"
+
+# For the client feature
+reqwest = { version = "0.11", optional = true }
+url = { version = "2.4", optional = true }
+
+# For the test-support feature
+async-trait = { version = "0.1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.28", features = ["full", "test-util"] }
+async-trait = "0.1"
