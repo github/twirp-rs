@@ -15,6 +15,7 @@ type HandlerResponse =
 
 type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
 
+/// A Router maps a request to a handler.
 #[derive(Default)]
 pub struct Router {
     routes: HashMap<(Method, String), HandlerFn>,
@@ -83,7 +84,6 @@ pub async fn serve(table: Arc<Router>, req: Request<Body>) -> Result<Response<Bo
             internal("internal server error").to_response()
         })
     } else {
-        tracing::error!(path=?key.1, "no handler registered for path");
         bad_route("not found").to_response()
     }
 }
@@ -127,7 +127,7 @@ where
     Ok((request, response_format))
 }
 
-pub fn write_response<T>(
+fn write_response<T>(
     response: Result<T, TwirpErrorResponse>,
     response_format: BodyFormat,
 ) -> Result<Response<Body>, GenericError>
@@ -159,8 +159,4 @@ where
         Err(err) => err.to_response(),
     }?;
     Ok(res)
-}
-
-pub fn write_err_response(err: TwirpErrorResponse) -> Result<Response<Body>, GenericError> {
-    err.to_response()
 }

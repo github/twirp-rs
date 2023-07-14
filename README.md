@@ -11,7 +11,9 @@ See the [example](./example) for a complete example project.
 Define services and messages in a `.proto` file:
 
 ```proto
-// example.service.proto
+// service.proto
+package service.haberdash.v1;
+
 service HaberdasherAPI {
    rpc MakeHat(MakeHatRequest) returns (MakeHatResponse);
 }
@@ -19,7 +21,7 @@ message MakeHatRequest { }
 message MakeHatResponse { }
 ```
 
-Add the `twirp-build` crate as a dependency in your `Cargo.toml` (you'll need `prost-build` too):
+Add the `twirp-build` crate as a build dependency in your `Cargo.toml` (you'll need `prost-build` too):
 
 ```toml
 # Cargo.toml

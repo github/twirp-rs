@@ -7,13 +7,6 @@ use std::fmt::Write;
 ///
 /// Add a call to `.service_generator(twirp_build::service_generator())` in
 /// main() of `build.rs`:
-///
-/// ```
-/// prost_build::Config::new()
-///    .service_generator(twirp_build::service_generator())
-///    .compile_protos(&["./service.proto"], &["./"])
-///    .expect("error compiling protos");
-/// ```
 pub fn service_generator() -> Box<ServiceGenerator> {
     Box::new(ServiceGenerator {})
 }
