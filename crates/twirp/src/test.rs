@@ -22,7 +22,7 @@ pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), hyper::Error>> 
     let addr = ([127, 0, 0, 1], port).into();
     let server = Server::bind(&addr).serve(service);
     println!("Listening on {addr}");
-    let h = tokio::spawn(async move { server.await });
+    let h = tokio::spawn(server);
     tokio::time::sleep(Duration::from_millis(100)).await;
     h
 }
