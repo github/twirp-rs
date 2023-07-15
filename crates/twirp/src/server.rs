@@ -17,9 +17,17 @@ type HandlerResponse =
 type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
 
 /// A Router maps a request to a handler.
-#[derive(Default)]
 pub struct Router {
     routes: HashMap<(Method, String), HandlerFn>,
+    prefix: &'static str,
+}
+
+pub const DEFAULT_TWIRP_PATH_PREFIX: &str = "/twirp";
+
+impl Default for Router {
+    fn default() -> Self {
+        Self::new(DEFAULT_TWIRP_PATH_PREFIX)
+    }
 }
 
 impl Debug for Router {
@@ -31,6 +39,16 @@ impl Debug for Router {
 }
 
 impl Router {
+    /// Create a new router at the given prefix. Since this prefix is
+    /// canonically `/twirp`, it is recommended to use `Router::default()`
+    /// instead.
+    pub fn new(prefix: &'static str) -> Self {
+        Self {
+            routes: Default::default(),
+            prefix,
+        }
+    }
+
     /// Adds a handler to the router for the given method and path.
     pub fn add_handler<F>(&mut self, method: Method, path: &str, f: F)
     where
@@ -78,7 +96,7 @@ impl Router {
                 }
             }))
         };
-        let key = (Method::POST, path.to_string());
+        let key = (Method::POST, [self.prefix, path].join("/"));
         self.routes.insert(key, Box::new(g));
     }
 }
@@ -95,6 +113,8 @@ pub async fn serve(
     }
 }
 
+// TODO: Properly implement JsonPb (de)serialization as it is slightly different
+// than standard JSON.
 #[derive(Debug, Clone, Copy, Default)]
 enum BodyFormat {
     #[default]
@@ -169,6 +189,14 @@ mod tests {
         let resp = serve(router, req).await.unwrap();
         let data = read_err_body(resp.into_body()).await;
         assert_eq!(data, bad_route("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_routes() {
+        let router = test_api_router().await;
+        let (method, path) = router.routes.iter().next().unwrap().0;
+        assert_eq!(method, Method::POST);
+        assert_eq!(path, "/twirp/test.TestAPI/Ping");
     }
 
     #[tokio::test]

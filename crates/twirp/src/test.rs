@@ -33,13 +33,13 @@ pub async fn test_api_router() -> Arc<Router> {
     // NB: This would be generated
     {
         let api = api.clone();
-        router.add_method("/twirp/test.TestAPI/Ping", move |req| {
+        router.add_method("test.TestAPI/Ping", move |req| {
             let api = api.clone();
             async move { api.ping(req).await }
         });
     }
     {
-        router.add_method("/twirp/test.TestAPI/Boom", move |req| {
+        router.add_method("test.TestAPI/Boom", move |req| {
             let api = api.clone();
             async move { api.boom(req).await }
         });
@@ -134,7 +134,7 @@ impl TestAPIClientExt for TestAPIClientCustom {
 #[async_trait]
 pub trait TestAPIClientExt {
     fn ping_url(&self, base_url: &Url) -> Result<Url, TwirpClientError> {
-        let url = base_url.join("twirp/test.TestAPI/Ping")?;
+        let url = base_url.join("test.TestAPI/Ping")?;
         Ok(url)
     }
     async fn ping_inner(

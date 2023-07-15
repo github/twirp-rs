@@ -12,6 +12,8 @@ use crate::{error::*, to_proto_body};
 pub enum TwirpClientError {
     #[error(transparent)]
     InvalidHeader(#[from] InvalidHeaderValue),
+    #[error("base_url must end in /, but got: {0}")]
+    InvalidBaseUrl(Url),
     #[error(transparent)]
     InvalidUrl(#[from] url::ParseError),
     #[error("http error, status code: {status}, msg:{msg}")]
@@ -75,7 +77,11 @@ impl TwirpClient {
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn default(base_url: Url) -> Result<Self> {
-        Self::new(base_url, reqwest::ClientBuilder::default())
+        if base_url.path().ends_with('/') {
+            Self::new(base_url, reqwest::ClientBuilder::default())
+        } else {
+            Err(TwirpClientError::InvalidBaseUrl(base_url))
+        }
     }
 
     /// Creates a TwirpClient.
@@ -97,10 +103,31 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn test_base_url() {
+        let url = Url::parse("http://localhost:3001/twirp/").unwrap();
+        assert!(TwirpClient::default(url).is_ok());
+        let url = Url::parse("http://localhost:3001/twirp").unwrap();
+        assert_eq!(
+            TwirpClient::default(url.clone()).unwrap_err().to_string(),
+            "base_url must end in /, but got: http://localhost:3001/twirp",
+        );
+    }
+
+    #[tokio::test]
+    async fn test_routes() {
+        let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
+        let client = TwirpClient::default(base_url.clone()).unwrap();
+        assert_eq!(
+            client.ping_url(&base_url).unwrap().to_string(),
+            "http://localhost:3001/twirp/test.TestAPI/Ping"
+        )
+    }
+
+    #[tokio::test]
     #[ignore = "integration"]
     async fn test_standard_client() {
-        let _ = run_test_server(3001).await;
-        let base_url = Url::parse("http://localhost:3001/").unwrap();
+        let h = run_test_server(3001).await;
+        let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
         let client = TwirpClient::default(base_url).unwrap();
         let resp = client
             .ping(PingRequest {
@@ -109,12 +136,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(&resp.name, "hi");
+        h.abort()
     }
 
     #[tokio::test]
     #[ignore = "integration"]
     async fn test_custom_client() {
-        let _ = run_test_server(3001).await;
+        let h = run_test_server(3001).await;
         let base_url = Url::parse("http://example:3001").unwrap();
         let client = TwirpClient::default(base_url).unwrap();
         let client = TestAPIClientCustom {
@@ -131,5 +159,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(&resp.name, "hi");
+        h.abort()
     }
 }

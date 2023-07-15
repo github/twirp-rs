@@ -47,7 +47,7 @@ where
         #[allow(clippy::redundant_clone)]
         let api = api.clone();
         router.add_method(
-            "/twirp/{}/{}",
+            "{}/{}",
             move |req| {{
                 let api = api.clone();
                 async move {{ api.{}(req).await }}
@@ -89,7 +89,7 @@ where
             .unwrap();
             writeln!(
                 buf,
-                r#"    let url = base_url.join("twirp/{}/{}")?;"#,
+                r#"    let url = base_url.join("{}/{}")?;"#,
                 service_fqn, m.proto_name,
             )
             .unwrap();
