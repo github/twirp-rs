@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
 use url::Url;
 
-use crate::client::{request, TwirpClient, TwirpClientError};
+use crate::client::{request, HttpTwirpClient, TwirpClientError};
 use crate::*;
 
 pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), hyper::Error>> {
@@ -99,7 +99,7 @@ impl TestAPI for TestAPIServer {
 // Custom client: add extra headers, do logging, etc
 pub struct TestAPIClientCustom {
     pub hmac_key: Option<String>,
-    pub client: TwirpClient,
+    pub client: HttpTwirpClient,
 }
 
 impl TestAPIClientCustom {
@@ -145,7 +145,7 @@ pub trait TestAPIClientExt {
 }
 
 #[async_trait]
-impl TestAPIClientExt for TwirpClient {
+impl TestAPIClientExt for HttpTwirpClient {
     async fn ping_inner(
         &self,
         url: Url,
@@ -162,7 +162,7 @@ pub trait TestAPIClient {
 }
 
 #[async_trait]
-impl TestAPIClient for TwirpClient {
+impl TestAPIClient for HttpTwirpClient {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpClientError> {
         self.ping_inner(self.ping_url(&self.base_url)?, req).await
     }

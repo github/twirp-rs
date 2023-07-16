@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use hyper::header::{InvalidHeaderValue, CONTENT_TYPE};
 use hyper::http::HeaderValue;
 use hyper::{HeaderMap, StatusCode};
@@ -44,6 +45,7 @@ where
     let status = res.status();
     let content_type = res.headers().get(CONTENT_TYPE).cloned();
 
+    // TODO: Include more info in the error cases: request path, content-type, etc.
     // eprintln!("{status:?} {content_type:?}");
     match (status, content_type) {
         (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
@@ -65,13 +67,26 @@ where
     }
 }
 
+/// `TwirpClient` is the interface that Twirp clients must implement. See
+/// `HttpTwirpClient` for the standard http client. You can define your own to
+/// wrap requests or mock out APIs.
+#[async_trait]
+pub trait TwirpClient {
+    async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
+    where
+        I: prost::Message,
+        O: prost::Message + Default;
+}
+
+/// `HttpTwirpClient` is a TwirpClient that uses `reqwest::Client` to make http
+/// requests.
 #[derive(Clone, Debug)]
-pub struct TwirpClient {
+pub struct HttpTwirpClient {
     pub client: reqwest::Client,
     pub base_url: Url,
 }
 
-impl TwirpClient {
+impl HttpTwirpClient {
     /// Creates a TwirpClient with the default `reqwest::ClientBuilder`.
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
@@ -92,7 +107,18 @@ impl TwirpClient {
         let mut headers: HeaderMap<HeaderValue> = HeaderMap::default();
         headers.insert(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF.try_into()?);
         let client = b.default_headers(headers).build()?;
-        Ok(TwirpClient { base_url, client })
+        Ok(HttpTwirpClient { base_url, client })
+    }
+}
+
+#[async_trait]
+impl TwirpClient for HttpTwirpClient {
+    async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
+    where
+        I: prost::Message,
+        O: prost::Message + Default,
+    {
+        request(self.client.post(url), body).await
     }
 }
 
@@ -105,10 +131,10 @@ mod tests {
     #[tokio::test]
     async fn test_base_url() {
         let url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        assert!(TwirpClient::default(url).is_ok());
+        assert!(HttpTwirpClient::default(url).is_ok());
         let url = Url::parse("http://localhost:3001/twirp").unwrap();
         assert_eq!(
-            TwirpClient::default(url.clone()).unwrap_err().to_string(),
+            HttpTwirpClient::default(url).unwrap_err().to_string(),
             "base_url must end in /, but got: http://localhost:3001/twirp",
         );
     }
@@ -116,7 +142,7 @@ mod tests {
     #[tokio::test]
     async fn test_routes() {
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        let client = TwirpClient::default(base_url.clone()).unwrap();
+        let client = HttpTwirpClient::default(base_url.clone()).unwrap();
         assert_eq!(
             client.ping_url(&base_url).unwrap().to_string(),
             "http://localhost:3001/twirp/test.TestAPI/Ping"
@@ -128,7 +154,7 @@ mod tests {
     async fn test_standard_client() {
         let h = run_test_server(3001).await;
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        let client = TwirpClient::default(base_url).unwrap();
+        let client = HttpTwirpClient::default(base_url).unwrap();
         let resp = client
             .ping(PingRequest {
                 name: "hi".to_string(),
@@ -144,7 +170,7 @@ mod tests {
     async fn test_custom_client() {
         let h = run_test_server(3001).await;
         let base_url = Url::parse("http://example:3001").unwrap();
-        let client = TwirpClient::default(base_url).unwrap();
+        let client = HttpTwirpClient::default(base_url).unwrap();
         let client = TestAPIClientCustom {
             hmac_key: None,
             client,

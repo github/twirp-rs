@@ -68,19 +68,7 @@ where
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(buf, "pub trait {}Client {{", service_name).unwrap();
         for m in &service.methods {
-            writeln!(
-                buf,
-                "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::TwirpClientError>;",
-                m.name, m.input_type, m.output_type,
-            )
-            .unwrap();
-        }
-        writeln!(buf, "}}").unwrap();
-
-        // Ext trait
-        writeln!(buf, "#[async_trait::async_trait]").unwrap();
-        writeln!(buf, "pub trait {}ClientExt {{", service_name).unwrap();
-        for m in &service.methods {
+            // <METHOD>_url
             writeln!(
                 buf,
                 "    fn {}_url(&self, base_url: &twirp::url::Url) -> Result<twirp::url::Url, twirp::client::TwirpClientError> {{",
@@ -96,6 +84,21 @@ where
             writeln!(buf, "    Ok(url)").unwrap();
             writeln!(buf, "    }}").unwrap();
 
+            // <METHOD>
+            writeln!(
+                buf,
+                "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::TwirpClientError>;",
+                m.name, m.input_type, m.output_type,
+            )
+            .unwrap();
+        }
+        writeln!(buf, "}}").unwrap();
+
+        // Ext trait
+        writeln!(buf, "#[async_trait::async_trait]").unwrap();
+        writeln!(buf, "pub trait {}ClientExt {{", service_name).unwrap();
+        for m in &service.methods {
+            // <METHOD>_with_url
             writeln!(
                 buf,
                 "    async fn {}_with_url(&self, url: twirp::url::Url, req: {}) -> Result<{}, twirp::client::TwirpClientError>;",
@@ -109,7 +112,7 @@ where
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(
             buf,
-            "impl {}Client for twirp::client::TwirpClient {{",
+            "impl {}Client for twirp::client::HttpTwirpClient {{",
             service_name
         )
         .unwrap();
@@ -133,7 +136,7 @@ where
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(
             buf,
-            "impl {}ClientExt for twirp::client::TwirpClient {{",
+            "impl {}ClientExt for twirp::client::HttpTwirpClient {{",
             service_name
         )
         .unwrap();
