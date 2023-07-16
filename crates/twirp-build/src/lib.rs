@@ -18,6 +18,10 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let service_name = service.name.replace("Api", "API");
         let service_fqn = format!("{}.{}", service.package, service_name);
         writeln!(buf).unwrap();
+
+        //
+        // generate the twirp server
+        //
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(buf, "pub trait {} {{", service_name).unwrap();
         for m in &service.methods {
@@ -64,11 +68,10 @@ where
         // generate the twirp client
         //
         writeln!(buf).unwrap();
-        // top level trait
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(buf, "pub trait {}Client {{", service_name).unwrap();
         for m in &service.methods {
-            // <METHOD>_url
+            // Define: <METHOD>_url
             writeln!(
                 buf,
                 "    fn {}_url(&self, base_url: &twirp::url::Url) -> Result<twirp::url::Url, twirp::client::TwirpClientError> {{",
@@ -84,7 +87,7 @@ where
             writeln!(buf, "    Ok(url)").unwrap();
             writeln!(buf, "    }}").unwrap();
 
-            // <METHOD>
+            // Define: <METHOD>
             writeln!(
                 buf,
                 "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::TwirpClientError>;",
@@ -94,21 +97,7 @@ where
         }
         writeln!(buf, "}}").unwrap();
 
-        // Ext trait
-        writeln!(buf, "#[async_trait::async_trait]").unwrap();
-        writeln!(buf, "pub trait {}ClientExt {{", service_name).unwrap();
-        for m in &service.methods {
-            // <METHOD>_with_url
-            writeln!(
-                buf,
-                "    async fn {}_with_url(&self, url: twirp::url::Url, req: {}) -> Result<{}, twirp::client::TwirpClientError>;",
-                m.name, m.input_type, m.output_type,
-            )
-            .unwrap();
-        }
-        writeln!(buf, "}}").unwrap();
-
-        // Implement the traits
+        // Implement the `twirp::client::HttpTwirpClient` trait
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(
             buf,
@@ -117,42 +106,20 @@ where
         )
         .unwrap();
         for m in &service.methods {
+            // Define the rpc `<METHOD>`
             writeln!(
                 buf,
                 "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::TwirpClientError> {{",
                 m.name, m.input_type, m.output_type,
             )
             .unwrap();
+            writeln!(buf, "    let url = self.{}_url(&self.base_url)?;", m.name).unwrap();
             writeln!(
                 buf,
-                "    self.{}_with_url(self.{}_url(&self.base_url)?, req).await",
-                m.name, m.name
+                "    twirp::client::request(self.client.post(url), req).await",
             )
             .unwrap();
             writeln!(buf, "    }}").unwrap();
-        }
-        writeln!(buf, "}}").unwrap();
-
-        writeln!(buf, "#[async_trait::async_trait]").unwrap();
-        writeln!(
-            buf,
-            "impl {}ClientExt for twirp::client::HttpTwirpClient {{",
-            service_name
-        )
-        .unwrap();
-        for m in &service.methods {
-            writeln!(
-                buf,
-                "    async fn {}_with_url(&self, url: twirp::url::Url, req: {}) -> Result<{}, twirp::client::TwirpClientError> {{",
-                m.name, m.input_type, m.output_type,
-            )
-            .unwrap();
-            writeln!(
-                buf,
-                "    twirp::client::request(self.client.post(url), req).await"
-            )
-            .unwrap();
-            writeln!(buf, "}}").unwrap();
         }
         writeln!(buf, "}}").unwrap();
     }

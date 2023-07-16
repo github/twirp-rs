@@ -30,9 +30,11 @@ pub async fn main() -> Result<(), GenericError> {
     Ok(())
 }
 
+/// `CustomTwirpClient` includes some extra state (hmac keys for auth) and wraps
+/// each request in order to add some HTTP headers.
 pub struct CustomTwirpClient {
     hmac_key: Option<String>,
-    client: HttpTwirpClient,
+    inner: HttpTwirpClient,
 }
 
 impl CustomTwirpClient {
@@ -40,16 +42,19 @@ impl CustomTwirpClient {
         let client = HttpTwirpClient::default(base_url)?;
         Ok(CustomTwirpClient {
             hmac_key: None,
-            client,
+            inner: client,
         })
     }
 
+    /// This version of `make_hat` allows dynamically setting the hostname per
+    /// request. It demonstrates that it's possible to override another of the
+    /// request cycle, if desired.
     async fn make_hat(
         &self,
         hostname: &str,
         req: MakeHatRequest,
     ) -> Result<MakeHatResponse, TwirpClientError> {
-        let mut url = self.client.make_hat_url(&self.client.base_url)?;
+        let mut url = self.inner.make_hat_url(&self.inner.base_url)?;
         url.set_host(Some(hostname))?;
         self.request(url, req).await
     }
@@ -62,27 +67,10 @@ impl TwirpClient for CustomTwirpClient {
         I: prost::Message,
         O: prost::Message + Default,
     {
-        let mut r = self.client.client.post(url).header("Request-Id", "XYZ");
+        let mut r = self.inner.client.post(url).header("Request-Id", "XYZ");
         if let Some(_hmac_key) = &self.hmac_key {
             r = r.header("Request-HMAC", "example:todo");
         }
         request(r, body).await
     }
 }
-
-// TODO: Move this all to blackbird!
-
-// #[async_trait]
-// impl HaberdasherAPIClientExt for CustomTwirpClient {
-//     async fn make_hat_with_url(
-//         &self,
-//         url: Url,
-//         req: MakeHatRequest,
-//     ) -> Result<MakeHatResponse, TwirpClientError> {
-//         let mut r = self.client.client.post(url).header("Request-Id", "XYZ");
-//         if let Some(_hmac_key) = &self.hmac_key {
-//             r = r.header("Request-HMAC", "example:todo");
-//         }
-//         request(r, req).await
-//     }
-// }
