@@ -7,9 +7,8 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Server};
 use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
-use url::Url;
 
-use crate::client::{request, HttpTwirpClient, TwirpClientError};
+use crate::client::{TwirpClient, TwirpClientError};
 use crate::*;
 
 pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), hyper::Error>> {
@@ -95,66 +94,7 @@ impl TestAPI for TestAPIServer {
     }
 }
 
-// Hand written custom client
-// Custom client: add extra headers, do logging, etc
-pub struct TestAPIClientCustom {
-    pub hmac_key: Option<String>,
-    pub client: HttpTwirpClient,
-}
-
-impl TestAPIClientCustom {
-    pub async fn ping(
-        &self,
-        hostname: &str,
-        req: PingRequest,
-    ) -> crate::client::Result<PingResponse> {
-        let mut url = self.ping_url(&self.client.base_url)?;
-        url.set_host(Some(hostname))?;
-        self.ping_inner(url, req).await
-    }
-}
-
-#[async_trait]
-impl TestAPIClientExt for TestAPIClientCustom {
-    async fn ping_inner(&self, url: Url, req: PingRequest) -> crate::client::Result<PingResponse> {
-        let mut r = self
-            .client
-            .client
-            .post(url)
-            .header("X-GitHub-Request-Id", "XYZ");
-        if let Some(_hmac_key) = &self.hmac_key {
-            r = r.header("Request-HMAC", "example:todo");
-        }
-        request(r, req).await
-    }
-}
-
 // Small test twirp services (this would usually be generated with twirp-build)
-
-#[async_trait]
-pub trait TestAPIClientExt {
-    fn ping_url(&self, base_url: &Url) -> Result<Url, TwirpClientError> {
-        let url = base_url.join("test.TestAPI/Ping")?;
-        Ok(url)
-    }
-    async fn ping_inner(
-        &self,
-        url: Url,
-        req: PingRequest,
-    ) -> Result<PingResponse, TwirpClientError>;
-}
-
-#[async_trait]
-impl TestAPIClientExt for HttpTwirpClient {
-    async fn ping_inner(
-        &self,
-        url: Url,
-        req: PingRequest,
-    ) -> Result<PingResponse, TwirpClientError> {
-        request(self.client.post(url), req).await
-    }
-}
-
 #[async_trait]
 pub trait TestAPIClient {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpClientError>;
@@ -162,9 +102,10 @@ pub trait TestAPIClient {
 }
 
 #[async_trait]
-impl TestAPIClient for HttpTwirpClient {
+impl TestAPIClient for TwirpClient {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpClientError> {
-        self.ping_inner(self.ping_url(&self.base_url)?, req).await
+        let url = self.base_url.join("test.TestAPI/Ping")?;
+        self.request(url, req).await
     }
 
     async fn boom(&self, _req: PingRequest) -> Result<PingResponse, TwirpClientError> {

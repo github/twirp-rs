@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use twirp::client::{request, HttpTwirpClient, TwirpClient, TwirpClientError};
+use twirp::client::{Middleware, Next, TwirpClient, TwirpClientBuilder};
+use twirp::reqwest::{Request, Response};
 use twirp::url::Url;
 use twirp::GenericError;
 
@@ -11,66 +12,56 @@ pub mod service {
     }
 }
 
-use service::haberdash::v1::{HaberdasherAPIClient, MakeHatRequest, MakeHatResponse};
+use service::haberdash::v1::MakeHatRequest;
 
 #[tokio::main]
 pub async fn main() -> Result<(), GenericError> {
     // basic client
     use service::haberdash::v1::HaberdasherAPIClient;
-    let client = HttpTwirpClient::default(Url::parse("http://localhost:3000/twirp/")?)?;
+    let client = TwirpClient::default(Url::parse("http://localhost:3000/twirp/")?)?;
     let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
     eprintln!("{:?}", resp);
 
-    // custom client
-    let client = CustomTwirpClient::new(Url::parse("http://xyz:3000/twirp/")?)?;
+    // customize the client with middleware
+    let client = TwirpClientBuilder::new(Url::parse("http://xyz:3000/twirp/")?)
+        .with(RequestHeaders { hmac_key: None })
+        .build()?;
     let resp = client
-        .make_hat("localhost", MakeHatRequest { inches: 1 })
+        .with(hostname("localhost"))
+        .make_hat(MakeHatRequest { inches: 1 })
         .await;
     eprintln!("{:?}", resp);
+
     Ok(())
 }
 
-/// `CustomTwirpClient` includes some extra state (hmac keys for auth) and wraps
-/// each request in order to add some HTTP headers.
-pub struct CustomTwirpClient {
-    hmac_key: Option<String>,
-    inner: HttpTwirpClient,
+fn hostname(hostname: &str) -> DynamicHostname {
+    DynamicHostname(hostname.to_string())
+}
+struct DynamicHostname(String);
+
+#[async_trait]
+impl Middleware for DynamicHostname {
+    async fn handle(&self, mut req: Request, next: Next<'_>) -> twirp::client::Result<Response> {
+        req.url_mut().set_host(Some(&self.0))?;
+        eprintln!("Set hostname");
+        next.run(req).await
+    }
 }
 
-impl CustomTwirpClient {
-    fn new(base_url: Url) -> Result<Self, TwirpClientError> {
-        let client = HttpTwirpClient::default(base_url)?;
-        Ok(CustomTwirpClient {
-            hmac_key: None,
-            inner: client,
-        })
-    }
-
-    /// This version of `make_hat` allows dynamically setting the hostname per
-    /// request. It demonstrates that it's possible to override another of the
-    /// request cycle, if desired.
-    async fn make_hat(
-        &self,
-        hostname: &str,
-        req: MakeHatRequest,
-    ) -> Result<MakeHatResponse, TwirpClientError> {
-        let mut url = self.inner.make_hat_url(&self.inner.base_url)?;
-        url.set_host(Some(hostname))?;
-        self.request(url, req).await
-    }
+struct RequestHeaders {
+    hmac_key: Option<String>,
 }
 
 #[async_trait]
-impl TwirpClient for CustomTwirpClient {
-    async fn request<I, O>(&self, url: Url, body: I) -> twirp::client::Result<O>
-    where
-        I: prost::Message,
-        O: prost::Message + Default,
-    {
-        let mut r = self.inner.client.post(url).header("Request-Id", "XYZ");
+impl Middleware for RequestHeaders {
+    async fn handle(&self, mut req: Request, next: Next<'_>) -> twirp::client::Result<Response> {
+        req.headers_mut().append("Request_id", "XYZ".try_into()?);
         if let Some(_hmac_key) = &self.hmac_key {
-            r = r.header("Request-HMAC", "example:todo");
+            req.headers_mut()
+                .append("Request-HMAC", "example:todo".try_into()?);
         }
-        request(r, body).await
+        eprintln!("Set headers: {req:?}");
+        next.run(req).await
     }
 }

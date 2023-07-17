@@ -71,22 +71,6 @@ where
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(buf, "pub trait {}Client {{", service_name).unwrap();
         for m in &service.methods {
-            // Define: <METHOD>_url
-            writeln!(
-                buf,
-                "    fn {}_url(&self, base_url: &twirp::url::Url) -> Result<twirp::url::Url, twirp::client::TwirpClientError> {{",
-                m.name,
-            )
-            .unwrap();
-            writeln!(
-                buf,
-                r#"    let url = base_url.join("{}/{}")?;"#,
-                service_fqn, m.proto_name,
-            )
-            .unwrap();
-            writeln!(buf, "    Ok(url)").unwrap();
-            writeln!(buf, "    }}").unwrap();
-
             // Define: <METHOD>
             writeln!(
                 buf,
@@ -97,11 +81,11 @@ where
         }
         writeln!(buf, "}}").unwrap();
 
-        // Implement the `twirp::client::HttpTwirpClient` trait
+        // Implement the `twirp::client::TwirpClient` trait
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(
             buf,
-            "impl {}Client for twirp::client::HttpTwirpClient {{",
+            "impl {}Client for twirp::client::TwirpClient {{",
             service_name
         )
         .unwrap();
@@ -113,12 +97,13 @@ where
                 m.name, m.input_type, m.output_type,
             )
             .unwrap();
-            writeln!(buf, "    let url = self.{}_url(&self.base_url)?;", m.name).unwrap();
             writeln!(
                 buf,
-                "    twirp::client::request(self.client.post(url), req).await",
+                r#"    let url = self.base_url.join("{}/{}")?;"#,
+                service_fqn, m.proto_name,
             )
             .unwrap();
+            writeln!(buf, "    self.request(url, req).await",).unwrap();
             writeln!(buf, "    }}").unwrap();
         }
         writeln!(buf, "}}").unwrap();
