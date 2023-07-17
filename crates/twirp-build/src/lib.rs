@@ -69,7 +69,12 @@ where
         //
         writeln!(buf).unwrap();
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
-        writeln!(buf, "pub trait {}Client {{", service_name).unwrap();
+        writeln!(
+            buf,
+            "pub trait {}Client: Send + Sync + std::fmt::Debug {{",
+            service_name
+        )
+        .unwrap();
         for m in &service.methods {
             // Define: <METHOD>
             writeln!(
@@ -81,11 +86,11 @@ where
         }
         writeln!(buf, "}}").unwrap();
 
-        // Implement the `twirp::client::TwirpClient` trait
+        // Implement the `twirp::client::HttpTwirpClient` trait
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(
             buf,
-            "impl {}Client for twirp::client::TwirpClient {{",
+            "impl {}Client for twirp::client::HttpTwirpClient {{",
             service_name
         )
         .unwrap();
@@ -103,7 +108,11 @@ where
                 service_fqn, m.proto_name,
             )
             .unwrap();
-            writeln!(buf, "    self.request(url, req).await",).unwrap();
+            writeln!(
+                buf,
+                "    twirp::client::TwirpClient::request(self, url, req).await",
+            )
+            .unwrap();
             writeln!(buf, "    }}").unwrap();
         }
         writeln!(buf, "}}").unwrap();

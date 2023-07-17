@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use twirp::client::{Middleware, Next, TwirpClient, TwirpClientBuilder};
+use twirp::client::{HttpTwirpClient, Middleware, Next, TwirpClient, TwirpClientBuilder};
 use twirp::reqwest::{Request, Response};
 use twirp::url::Url;
 use twirp::GenericError;
@@ -18,7 +18,7 @@ use service::haberdash::v1::MakeHatRequest;
 pub async fn main() -> Result<(), GenericError> {
     // basic client
     use service::haberdash::v1::HaberdasherAPIClient;
-    let client = TwirpClient::default(Url::parse("http://localhost:3000/twirp/")?)?;
+    let client = HttpTwirpClient::default(Url::parse("http://localhost:3000/twirp/")?)?;
     let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
     eprintln!("{:?}", resp);
 

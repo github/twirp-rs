@@ -8,7 +8,7 @@ use hyper::{Body, Request, Server};
 use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
 
-use crate::client::{TwirpClient, TwirpClientError};
+use crate::client::{HttpTwirpClient, TwirpClientError};
 use crate::*;
 
 pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), hyper::Error>> {
@@ -102,10 +102,10 @@ pub trait TestAPIClient {
 }
 
 #[async_trait]
-impl TestAPIClient for TwirpClient {
+impl TestAPIClient for HttpTwirpClient {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpClientError> {
         let url = self.base_url.join("test.TestAPI/Ping")?;
-        self.request(url, req).await
+        client::TwirpClient::request(self, url, req).await
     }
 
     async fn boom(&self, _req: PingRequest) -> Result<PingResponse, TwirpClientError> {

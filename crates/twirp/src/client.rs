@@ -78,21 +78,21 @@ impl TwirpClientBuilder {
         }
     }
 
-    pub fn build(self) -> Result<TwirpClient> {
-        TwirpClient::new(self.base_url, self.builder, self.middleware)
+    pub fn build(self) -> Result<HttpTwirpClient> {
+        HttpTwirpClient::new(self.base_url, self.builder, self.middleware)
     }
 }
 
 /// `HttpTwirpClient` is a TwirpClient that uses `reqwest::Client` to make http
 /// requests.
 #[derive(Clone)]
-pub struct TwirpClient {
+pub struct HttpTwirpClient {
     pub base_url: Arc<Url>,
     client: Arc<reqwest::Client>,
     middlewares: Vec<Arc<dyn Middleware>>,
 }
 
-impl std::fmt::Debug for TwirpClient {
+impl std::fmt::Debug for HttpTwirpClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TwirpClient")
             .field("base_url", &self.base_url)
@@ -102,7 +102,19 @@ impl std::fmt::Debug for TwirpClient {
     }
 }
 
-impl TwirpClient {
+#[async_trait]
+pub trait TwirpClient {
+    fn with<M>(&self, middleware: M) -> Self
+    where
+        M: Middleware;
+
+    async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
+    where
+        I: prost::Message,
+        O: prost::Message + Default;
+}
+
+impl HttpTwirpClient {
     /// Creates a TwirpClient with the default `reqwest::ClientBuilder`.
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
@@ -127,14 +139,17 @@ impl TwirpClient {
         let mut headers: HeaderMap<HeaderValue> = HeaderMap::default();
         headers.insert(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF.try_into()?);
         let client = b.default_headers(headers).build()?;
-        Ok(TwirpClient {
+        Ok(HttpTwirpClient {
             base_url: Arc::new(base_url),
             client: Arc::new(client),
             middlewares,
         })
     }
+}
 
-    pub fn with<M>(&self, middleware: M) -> Self
+#[async_trait]
+impl TwirpClient for HttpTwirpClient {
+    fn with<M>(&self, middleware: M) -> Self
     where
         M: Middleware,
     {
@@ -147,7 +162,7 @@ impl TwirpClient {
         }
     }
 
-    pub async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
+    async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
     where
         I: prost::Message,
         O: prost::Message + Default,
@@ -263,10 +278,10 @@ mod tests {
     #[tokio::test]
     async fn test_base_url() {
         let url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        assert!(TwirpClient::default(url).is_ok());
+        assert!(HttpTwirpClient::default(url).is_ok());
         let url = Url::parse("http://localhost:3001/twirp").unwrap();
         assert_eq!(
-            TwirpClient::default(url).unwrap_err().to_string(),
+            HttpTwirpClient::default(url).unwrap_err().to_string(),
             "base_url must end in /, but got: http://localhost:3001/twirp",
         );
     }
@@ -293,7 +308,7 @@ mod tests {
     async fn test_standard_client() {
         let h = run_test_server(3001).await;
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        let client = TwirpClient::default(base_url).unwrap();
+        let client = HttpTwirpClient::default(base_url).unwrap();
         let resp = client
             .ping(PingRequest {
                 name: "hi".to_string(),
