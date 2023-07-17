@@ -87,7 +87,7 @@ impl TwirpClientBuilder {
 /// requests.
 #[derive(Clone)]
 pub struct TwirpClient {
-    pub base_url: Url,
+    pub base_url: Arc<Url>,
     client: Arc<reqwest::Client>,
     middlewares: Vec<Arc<dyn Middleware>>,
 }
@@ -128,7 +128,7 @@ impl TwirpClient {
         headers.insert(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF.try_into()?);
         let client = b.default_headers(headers).build()?;
         Ok(TwirpClient {
-            base_url,
+            base_url: Arc::new(base_url),
             client: Arc::new(client),
             middlewares,
         })
