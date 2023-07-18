@@ -192,12 +192,14 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "multiple routes now, need to sort to compare"]
     async fn test_routes() {
         let router = test_api_router().await;
-        let (method, path) = router.routes.iter().next().unwrap().0;
-        assert_eq!(method, Method::POST);
-        assert_eq!(path, "/twirp/test.TestAPI/Ping");
+        assert!(router
+            .routes
+            .contains_key(&(Method::POST, "/twirp/test.TestAPI/Ping".to_string())));
+        assert!(router
+            .routes
+            .contains_key(&(Method::POST, "/twirp/test.TestAPI/Boom".to_string())));
     }
 
     #[tokio::test]
