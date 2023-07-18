@@ -108,11 +108,7 @@ where
                 service_fqn, m.proto_name,
             )
             .unwrap();
-            writeln!(
-                buf,
-                "    twirp::client::TwirpClient::request(self, url, req).await",
-            )
-            .unwrap();
+            writeln!(buf, "    self.request(url, req).await",).unwrap();
             writeln!(buf, "    }}").unwrap();
         }
         writeln!(buf, "}}").unwrap();

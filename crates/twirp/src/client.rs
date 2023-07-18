@@ -102,18 +102,6 @@ impl std::fmt::Debug for HttpTwirpClient {
     }
 }
 
-#[async_trait]
-pub trait TwirpClient {
-    fn with<M>(&self, middleware: M) -> Self
-    where
-        M: Middleware;
-
-    async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
-    where
-        I: prost::Message,
-        O: prost::Message + Default;
-}
-
 impl HttpTwirpClient {
     /// Creates a TwirpClient with the default `reqwest::ClientBuilder`.
     ///
@@ -145,11 +133,9 @@ impl HttpTwirpClient {
             middlewares,
         })
     }
-}
 
-#[async_trait]
-impl TwirpClient for HttpTwirpClient {
-    fn with<M>(&self, middleware: M) -> Self
+    /// Add some middleware to the request stack.
+    pub fn with<M>(&self, middleware: M) -> Self
     where
         M: Middleware,
     {
@@ -162,7 +148,7 @@ impl TwirpClient for HttpTwirpClient {
         }
     }
 
-    async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
+    pub async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
     where
         I: prost::Message,
         O: prost::Message + Default,

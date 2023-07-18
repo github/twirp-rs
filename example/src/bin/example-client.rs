@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use twirp::client::{HttpTwirpClient, Middleware, Next, TwirpClient, TwirpClientBuilder};
+use twirp::client::{HttpTwirpClient, Middleware, Next, TwirpClientBuilder};
 use twirp::reqwest::{Request, Response};
 use twirp::url::Url;
 use twirp::GenericError;
@@ -12,7 +12,7 @@ pub mod service {
     }
 }
 
-use service::haberdash::v1::MakeHatRequest;
+use service::haberdash::v1::{HaberdasherAPIClient, MakeHatRequest, MakeHatResponse};
 
 #[tokio::main]
 pub async fn main() -> Result<(), GenericError> {
@@ -63,5 +63,18 @@ impl Middleware for RequestHeaders {
         }
         eprintln!("Set headers: {req:?}");
         next.run(req).await
+    }
+}
+
+#[derive(Debug)]
+struct MockHaberdasherAPIClient;
+
+#[async_trait]
+impl HaberdasherAPIClient for MockHaberdasherAPIClient {
+    async fn make_hat(
+        &self,
+        _req: MakeHatRequest,
+    ) -> Result<MakeHatResponse, twirp::client::TwirpClientError> {
+        todo!()
     }
 }

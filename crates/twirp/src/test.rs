@@ -105,7 +105,7 @@ pub trait TestAPIClient {
 impl TestAPIClient for HttpTwirpClient {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpClientError> {
         let url = self.base_url.join("test.TestAPI/Ping")?;
-        client::TwirpClient::request(self, url, req).await
+        self.request(url, req).await
     }
 
     async fn boom(&self, _req: PingRequest) -> Result<PingResponse, TwirpClientError> {
