@@ -8,10 +8,9 @@ use hyper::{Body, Request, Server};
 use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
 
-use crate::client::{HttpTwirpClient, TwirpClientError};
 use crate::*;
 
-pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), hyper::Error>> {
+pub async fn run_test_server(port: u16) -> JoinHandle<core::result::Result<(), hyper::Error>> {
     let router = test_api_router().await;
     let service = make_service_fn(move |_| {
         let router = router.clone();
@@ -85,11 +84,14 @@ pub struct TestAPIServer;
 
 #[async_trait]
 impl TestAPI for TestAPIServer {
-    async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpErrorResponse> {
+    async fn ping(
+        &self,
+        req: PingRequest,
+    ) -> core::result::Result<PingResponse, TwirpErrorResponse> {
         Ok(PingResponse { name: req.name })
     }
 
-    async fn boom(&self, _: PingRequest) -> Result<PingResponse, TwirpErrorResponse> {
+    async fn boom(&self, _: PingRequest) -> core::result::Result<PingResponse, TwirpErrorResponse> {
         Err(internal("boom!"))
     }
 }
@@ -97,26 +99,32 @@ impl TestAPI for TestAPIServer {
 // Small test twirp services (this would usually be generated with twirp-build)
 #[async_trait]
 pub trait TestAPIClient {
-    async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpClientError>;
-    async fn boom(&self, req: PingRequest) -> Result<PingResponse, TwirpClientError>;
+    async fn ping(&self, req: PingRequest) -> Result<PingResponse>;
+    async fn boom(&self, req: PingRequest) -> Result<PingResponse>;
 }
 
 #[async_trait]
-impl TestAPIClient for HttpTwirpClient {
-    async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpClientError> {
+impl TestAPIClient for Client {
+    async fn ping(&self, req: PingRequest) -> Result<PingResponse> {
         let url = self.base_url.join("test.TestAPI/Ping")?;
         self.request(url, req).await
     }
 
-    async fn boom(&self, _req: PingRequest) -> Result<PingResponse, TwirpClientError> {
+    async fn boom(&self, _req: PingRequest) -> Result<PingResponse> {
         todo!()
     }
 }
 
 #[async_trait]
 pub trait TestAPI {
-    async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpErrorResponse>;
-    async fn boom(&self, req: PingRequest) -> Result<PingResponse, TwirpErrorResponse>;
+    async fn ping(
+        &self,
+        req: PingRequest,
+    ) -> core::result::Result<PingResponse, TwirpErrorResponse>;
+    async fn boom(
+        &self,
+        req: PingRequest,
+    ) -> core::result::Result<PingResponse, TwirpErrorResponse>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

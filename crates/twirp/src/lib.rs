@@ -8,6 +8,7 @@ pub mod server;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
 
+pub use client::*;
 pub use error::*;
 pub use server::*;
 

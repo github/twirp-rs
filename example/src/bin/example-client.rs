@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use twirp::client::{HttpTwirpClient, Middleware, Next, TwirpClientBuilder};
+use twirp::client::{Client, ClientBuilder, Middleware, Next};
 use twirp::reqwest::{Request, Response};
 use twirp::url::Url;
 use twirp::GenericError;
@@ -18,12 +18,12 @@ use service::haberdash::v1::{HaberdasherAPIClient, MakeHatRequest, MakeHatRespon
 pub async fn main() -> Result<(), GenericError> {
     // basic client
     use service::haberdash::v1::HaberdasherAPIClient;
-    let client = HttpTwirpClient::default(Url::parse("http://localhost:3000/twirp/")?)?;
+    let client = Client::default(Url::parse("http://localhost:3000/twirp/")?)?;
     let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
     eprintln!("{:?}", resp);
 
     // customize the client with middleware
-    let client = TwirpClientBuilder::new(Url::parse("http://xyz:3000/twirp/")?)
+    let client = ClientBuilder::new(Url::parse("http://xyz:3000/twirp/")?)
         .with(RequestHeaders { hmac_key: None })
         .build()?;
     let resp = client
@@ -74,7 +74,7 @@ impl HaberdasherAPIClient for MockHaberdasherAPIClient {
     async fn make_hat(
         &self,
         _req: MakeHatRequest,
-    ) -> Result<MakeHatResponse, twirp::client::TwirpClientError> {
+    ) -> Result<MakeHatResponse, twirp::client::ClientError> {
         todo!()
     }
 }

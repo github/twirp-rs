@@ -79,18 +79,18 @@ where
             // Define: <METHOD>
             writeln!(
                 buf,
-                "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::TwirpClientError>;",
+                "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::ClientError>;",
                 m.name, m.input_type, m.output_type,
             )
             .unwrap();
         }
         writeln!(buf, "}}").unwrap();
 
-        // Implement the `twirp::client::HttpTwirpClient` trait
+        // Implement the rpc traits for: `twirp::client::Client`
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(
             buf,
-            "impl {}Client for twirp::client::HttpTwirpClient {{",
+            "impl {}Client for twirp::client::Client {{",
             service_name
         )
         .unwrap();
@@ -98,7 +98,7 @@ where
             // Define the rpc `<METHOD>`
             writeln!(
                 buf,
-                "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::TwirpClientError> {{",
+                "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::ClientError> {{",
                 m.name, m.input_type, m.output_type,
             )
             .unwrap();

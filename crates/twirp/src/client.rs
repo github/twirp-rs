@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use hyper::header::{InvalidHeaderValue, CONTENT_TYPE};
 use hyper::http::HeaderValue;
 use hyper::{HeaderMap, StatusCode};
-use reqwest::ClientBuilder;
 use thiserror::Error;
 use url::Url;
 
@@ -12,7 +11,7 @@ use crate::headers::*;
 use crate::{error::*, to_proto_body};
 
 #[derive(Debug, Error)]
-pub enum TwirpClientError {
+pub enum ClientError {
     #[error(transparent)]
     InvalidHeader(#[from] InvalidHeaderValue),
     #[error("base_url must end in /, but got: {0}")]
@@ -40,19 +39,19 @@ pub enum TwirpClientError {
     TwirpError(TwirpErrorResponse),
 }
 
-pub type Result<T> = core::result::Result<T, TwirpClientError>;
+pub type Result<T> = core::result::Result<T, ClientError>;
 
-pub struct TwirpClientBuilder {
+pub struct ClientBuilder {
     base_url: Url,
-    builder: ClientBuilder,
+    builder: reqwest::ClientBuilder,
     middleware: Vec<Arc<dyn Middleware>>,
 }
 
-impl TwirpClientBuilder {
+impl ClientBuilder {
     pub fn new(base_url: Url) -> Self {
         Self {
             base_url,
-            builder: ClientBuilder::default(),
+            builder: reqwest::ClientBuilder::default(),
             middleware: vec![],
         }
     }
@@ -70,7 +69,7 @@ impl TwirpClientBuilder {
         }
     }
 
-    pub fn with_client_builder(self, builder: ClientBuilder) -> Self {
+    pub fn with_client_builder(self, builder: reqwest::ClientBuilder) -> Self {
         Self {
             base_url: self.base_url,
             builder,
@@ -78,21 +77,21 @@ impl TwirpClientBuilder {
         }
     }
 
-    pub fn build(self) -> Result<HttpTwirpClient> {
-        HttpTwirpClient::new(self.base_url, self.builder, self.middleware)
+    pub fn build(self) -> Result<Client> {
+        Client::new(self.base_url, self.builder, self.middleware)
     }
 }
 
 /// `HttpTwirpClient` is a TwirpClient that uses `reqwest::Client` to make http
 /// requests.
 #[derive(Clone)]
-pub struct HttpTwirpClient {
+pub struct Client {
     pub base_url: Arc<Url>,
     client: Arc<reqwest::Client>,
     middlewares: Vec<Arc<dyn Middleware>>,
 }
 
-impl std::fmt::Debug for HttpTwirpClient {
+impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TwirpClient")
             .field("base_url", &self.base_url)
@@ -102,32 +101,32 @@ impl std::fmt::Debug for HttpTwirpClient {
     }
 }
 
-impl HttpTwirpClient {
-    /// Creates a TwirpClient with the default `reqwest::ClientBuilder`.
+impl Client {
+    /// Creates a `twirp::Client` with the default `reqwest::ClientBuilder`.
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn default(base_url: Url) -> Result<Self> {
         if base_url.path().ends_with('/') {
-            Self::new(base_url, ClientBuilder::default(), vec![])
+            Self::new(base_url, reqwest::ClientBuilder::default(), vec![])
         } else {
-            Err(TwirpClientError::InvalidBaseUrl(base_url))
+            Err(ClientError::InvalidBaseUrl(base_url))
         }
     }
 
-    /// Creates a TwirpClient.
+    /// Creates a `twirp::Client`.
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn new(
         base_url: Url,
-        b: ClientBuilder,
+        b: reqwest::ClientBuilder,
         middlewares: Vec<Arc<dyn Middleware>>,
     ) -> Result<Self> {
         let mut headers: HeaderMap<HeaderValue> = HeaderMap::default();
         headers.insert(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF.try_into()?);
         let client = b.default_headers(headers).build()?;
-        Ok(HttpTwirpClient {
+        Ok(Client {
             base_url: Arc::new(base_url),
             client: Arc::new(client),
             middlewares,
@@ -173,11 +172,11 @@ impl HttpTwirpClient {
                 if (status.is_client_error() || status.is_server_error())
                     && ct.as_bytes() == CONTENT_TYPE_JSON =>
             {
-                Err(TwirpClientError::TwirpError(serde_json::from_slice(
+                Err(ClientError::TwirpError(serde_json::from_slice(
                     &resp.bytes().await?,
                 )?))
             }
-            (status, ct) => Err(TwirpClientError::HttpError {
+            (status, ct) => Err(ClientError::HttpError {
                 status,
                 msg: "unknown error".to_string(),
                 path,
@@ -231,12 +230,7 @@ impl<'a> Next<'a> {
             self.middlewares = rest;
             Box::pin(current.handle(req, self))
         } else {
-            Box::pin(async move {
-                self.client
-                    .execute(req)
-                    .await
-                    .map_err(TwirpClientError::from)
-            })
+            Box::pin(async move { self.client.execute(req).await.map_err(ClientError::from) })
         }
     }
 }
@@ -264,10 +258,10 @@ mod tests {
     #[tokio::test]
     async fn test_base_url() {
         let url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        assert!(HttpTwirpClient::default(url).is_ok());
+        assert!(Client::default(url).is_ok());
         let url = Url::parse("http://localhost:3001/twirp").unwrap();
         assert_eq!(
-            HttpTwirpClient::default(url).unwrap_err().to_string(),
+            Client::default(url).unwrap_err().to_string(),
             "base_url must end in /, but got: http://localhost:3001/twirp",
         );
     }
@@ -275,7 +269,7 @@ mod tests {
     #[tokio::test]
     async fn test_routes() {
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        let client = TwirpClientBuilder::new(base_url)
+        let client = ClientBuilder::new(base_url)
             .with(AssertRouting {
                 expected_url: "http://localhost:3001/twirp/test.TestAPI/Ping",
             })
@@ -294,7 +288,7 @@ mod tests {
     async fn test_standard_client() {
         let h = run_test_server(3001).await;
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        let client = HttpTwirpClient::default(base_url).unwrap();
+        let client = Client::default(base_url).unwrap();
         let resp = client
             .ping(PingRequest {
                 name: "hi".to_string(),
