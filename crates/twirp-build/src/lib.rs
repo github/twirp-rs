@@ -6,7 +6,7 @@ use std::fmt::Write;
 /// `ServiceGenerator` to produce a Rust server for your proto services.
 ///
 /// Add a call to `.service_generator(twirp_build::service_generator())` in
-/// main() of `build.rs`:
+/// main() of `build.rs`.
 pub fn service_generator() -> Box<ServiceGenerator> {
     Box::new(ServiceGenerator {})
 }
@@ -71,8 +71,7 @@ where
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(
             buf,
-            "pub trait {}Client: Send + Sync + std::fmt::Debug {{",
-            service_name
+            "pub trait {service_name}Client: Send + Sync + std::fmt::Debug {{",
         )
         .unwrap();
         for m in &service.methods {
@@ -90,8 +89,7 @@ where
         writeln!(buf, "#[async_trait::async_trait]").unwrap();
         writeln!(
             buf,
-            "impl {}Client for twirp::client::Client {{",
-            service_name
+            "impl {service_name}Client for twirp::client::Client {{",
         )
         .unwrap();
         for m in &service.methods {
