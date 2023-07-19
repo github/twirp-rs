@@ -18,7 +18,7 @@ use service::haberdash::v1::{HaberdasherAPIClient, MakeHatRequest, MakeHatRespon
 pub async fn main() -> Result<(), GenericError> {
     // basic client
     use service::haberdash::v1::HaberdasherAPIClient;
-    let client = Client::default(Url::parse("http://localhost:3000/twirp/")?)?;
+    let client = Client::from_base_url(Url::parse("http://localhost:3000/twirp/")?)?;
     let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
     eprintln!("{:?}", resp);
 

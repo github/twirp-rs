@@ -56,6 +56,9 @@ impl ClientBuilder {
         }
     }
 
+    /// Add middleware to the client that will be called on each request.
+    /// Middlewares are invoked in the order they are added as part of the
+    /// request cycle.
     pub fn with<M>(self, middleware: M) -> Self
     where
         M: Middleware,
@@ -102,18 +105,6 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-    /// Creates a `twirp::Client` with the default `reqwest::ClientBuilder`.
-    ///
-    /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
-    /// you create one and **reuse** it.
-    pub fn default(base_url: Url) -> Result<Self> {
-        if base_url.path().ends_with('/') {
-            Self::new(base_url, reqwest::ClientBuilder::default(), vec![])
-        } else {
-            Err(ClientError::InvalidBaseUrl(base_url))
-        }
-    }
-
     /// Creates a `twirp::Client`.
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
@@ -123,30 +114,40 @@ impl Client {
         b: reqwest::ClientBuilder,
         middlewares: Vec<Arc<dyn Middleware>>,
     ) -> Result<Self> {
-        let mut headers: HeaderMap<HeaderValue> = HeaderMap::default();
-        headers.insert(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF.try_into()?);
-        let client = b.default_headers(headers).build()?;
-        Ok(Client {
-            base_url: Arc::new(base_url),
-            client: Arc::new(client),
-            middlewares,
-        })
-    }
-
-    /// Add some middleware to the request stack.
-    pub fn with<M>(&self, middleware: M) -> Self
-    where
-        M: Middleware,
-    {
-        let mut middlewares = self.middlewares.clone();
-        middlewares.push(Arc::new(middleware));
-        Self {
-            base_url: self.base_url.clone(),
-            client: self.client.clone(),
-            middlewares,
+        if base_url.path().ends_with('/') {
+            let mut headers: HeaderMap<HeaderValue> = HeaderMap::default();
+            headers.insert(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF.try_into()?);
+            let client = b.default_headers(headers).build()?;
+            Ok(Client {
+                base_url: Arc::new(base_url),
+                client: Arc::new(client),
+                middlewares,
+            })
+        } else {
+            Err(ClientError::InvalidBaseUrl(base_url))
         }
     }
 
+    /// Creates a `twirp::Client` with the default `reqwest::ClientBuilder`.
+    ///
+    /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
+    /// you create one and **reuse** it.
+    pub fn from_base_url(base_url: Url) -> Result<Self> {
+        Self::new(base_url, reqwest::ClientBuilder::default(), vec![])
+    }
+
+    /// Add middleware to this specific request stack. Middlewares are invoked
+    /// in the order they are added as part of the request cycle. Middleware
+    /// added here will run after any middleware added with the `ClientBuilder`.
+    pub fn with<M>(mut self, middleware: M) -> Self
+    where
+        M: Middleware,
+    {
+        self.middlewares.push(Arc::new(middleware));
+        self
+    }
+
+    /// Make an HTTP twirp request.
     pub async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
     where
         I: prost::Message,
@@ -258,10 +259,10 @@ mod tests {
     #[tokio::test]
     async fn test_base_url() {
         let url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        assert!(Client::default(url).is_ok());
+        assert!(Client::from_base_url(url).is_ok());
         let url = Url::parse("http://localhost:3001/twirp").unwrap();
         assert_eq!(
-            Client::default(url).unwrap_err().to_string(),
+            Client::from_base_url(url).unwrap_err().to_string(),
             "base_url must end in /, but got: http://localhost:3001/twirp",
         );
     }
@@ -288,7 +289,7 @@ mod tests {
     async fn test_standard_client() {
         let h = run_test_server(3001).await;
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        let client = Client::default(base_url).unwrap();
+        let client = Client::from_base_url(base_url).unwrap();
         let resp = client
             .ping(PingRequest {
                 name: "hi".to_string(),
