@@ -5,6 +5,10 @@ all: build lint test
 build:
 	cargo build --features test-support
 
+.PHONY: test
+test:
+	cargo test --features test-support
+
 .PHONY: lint
 lint:
 	cargo fmt --all -- --check

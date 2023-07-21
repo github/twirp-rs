@@ -15,7 +15,7 @@ pub use server::*;
 // Re-export `reqwest` so that it's easy to implement middleware.
 pub use reqwest;
 
-// Re-export `url so that the generated code works without additional dependencies beyond just the `twirp` crate.
+// Re-export `url` so that the generated code works without additional dependencies beyond just the `twirp` crate.
 pub use url;
 
 pub(crate) fn to_proto_body<T>(m: T) -> hyper::Body

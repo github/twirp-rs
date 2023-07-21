@@ -16,8 +16,6 @@ fn main() {
     prost_build
         .service_generator(twirp_build::service_generator())
         .type_attribute(".", "#[derive(serde::Serialize,serde::Deserialize)]")
-        .type_attribute(".service.example.MakeHatRequest", "#[serde(default)]")
-        .type_attribute(".service.example.MakeHatResponse", "#[serde(default)]")
         .extern_path(".google.protobuf.Timestamp", "::prost_wkt_types::Timestamp")
         .file_descriptor_set_path(&descriptor_file)
         .compile_protos(&proto_source_files, &["./proto"])

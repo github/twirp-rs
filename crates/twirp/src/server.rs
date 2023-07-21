@@ -11,17 +11,20 @@ use crate::error::*;
 use crate::headers::*;
 use crate::to_proto_body;
 
+/// A function that handles a request and returns a response.
+type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
+
+/// Type alias for a handler response.
 type HandlerResponse =
     Box<dyn Future<Output = Result<Response<Body>, GenericError>> + Unpin + Send>;
 
-type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
-
-/// A Router maps a request to a handler.
+/// A Router maps a request (method, path) tuple to a handler.
 pub struct Router {
     routes: HashMap<(Method, String), HandlerFn>,
     prefix: &'static str,
 }
 
+/// The canonical twirp path prefix. You don't have to use this, but it's the default.
 pub const DEFAULT_TWIRP_PATH_PREFIX: &str = "/twirp";
 
 impl Default for Router {
@@ -101,6 +104,7 @@ impl Router {
     }
 }
 
+/// Serve a request using the given router.
 pub async fn serve(
     router: Arc<Router>,
     req: Request<Body>,

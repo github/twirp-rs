@@ -10,6 +10,7 @@ use url::Url;
 use crate::headers::*;
 use crate::{error::*, to_proto_body};
 
+/// A twirp client error.
 #[derive(Debug, Error)]
 pub enum ClientError {
     #[error(transparent)]
@@ -41,6 +42,7 @@ pub enum ClientError {
 
 pub type Result<T> = core::result::Result<T, ClientError>;
 
+/// Use ClientBuilder to build a TwirpClient.
 pub struct ClientBuilder {
     base_url: Url,
     builder: reqwest::ClientBuilder,
@@ -164,7 +166,6 @@ impl Client {
         let status = resp.status();
         let content_type = resp.headers().get(CONTENT_TYPE).cloned();
 
-        // TODO: Include more info in the error cases: request path, content-type, etc.
         match (status, content_type) {
             (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
                 O::decode(resp.bytes().await?).map_err(|e| e.into())

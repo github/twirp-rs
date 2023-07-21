@@ -2,7 +2,7 @@
 
 [Twirp is an RPC protocol](https://twitchtv.github.io/twirp/docs/spec_v7.html) based on HTTP and Protocol Buffers (proto). The protocol uses HTTP URLs to specify the RPC endpoints, and sends/receives proto messages as HTTP request/response bodies. Services are defined in a [.proto file](https://developers.google.com/protocol-buffers/docs/proto3), allowing easy implementation of RPC services with auto-generated clients and servers in different languages.
 
-The [canonical implementation](https://github.com/twitchtv/twirp) is in Golang, this is a Rust implementation of the protocol. Currently, this crate only supports server generation, client generation is a future TODO.
+The [canonical implementation](https://github.com/twitchtv/twirp) is in Golang, this is a Rust implementation of the protocol.
 
 ## Usage
 
@@ -43,28 +43,56 @@ fn main() {
 
 This generates code that you can find in `target/build/your-project-*/out/example.service.rs`. In order to use this code, you'll need to implement the trait for the proto defined service and wire up the service handlers to a hyper web server. See [the example `main.rs`]( example/src/main.rs) for details.
 
-Essentially, you need to include the generate code, create a router, register your service, and then serve those routes in the hyper server:
+Include the generated code, create a router, register your service, and then serve those routes in the hyper server:
 
 ```rust
-pub mod service {
-    pub mod haberdash {
-        pub mod v1 {
-            include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
-        }
-    }
+mod haberdash {
+    include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
 }
-use service::haberdash::v1:: as haberdash;
+use haberdash
 
 #[tokio::main]
 pub async fn main() {
     let mut router = Router::default();
-    let example = Arc::new(HaberdasherAPIServer {});
-    haberdash::add_service(&mut router, example.clone());
+    let server = Arc::new(HaberdasherAPIServer {});
+    haberdash::add_service(&mut router, server.clone());
     let router = Arc::new(router);
     let service = make_service_fn(move |_| {
         let router = router.clone();
         async { Ok::<_, GenericError>(service_fn(move |req| twirp::serve(router.clone(), req))) }
     });
-    // ... now start the server...
+
+    let addr = ([127, 0, 0, 1], 3000).into();
+    let server = Server::bind(&addr).serve(service);
+    server.await.expect("server error")
+}
+
+// Define the server and implement the trait.
+struct HaberdasherAPIServer;
+
+#[async_trait]
+impl haberdash::HaberdasherAPI for HaberdasherAPIServer {
+    async fn make_hat(&self, req: MakeHatRequest) -> Result<MakeHatResponse, TwirpErrorResponse> {
+        todo!()
+    }
+}
+```
+
+## Usage (client side)
+
+On the client side, you also get a generated twirp client (based on the rpc endpoints in your proto). Include the generated code, create a client, and start making rpc calls:
+
+``` rust
+mod haberdash {
+    include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
+}
+
+use haberdash::{HaberdasherAPIClient, MakeHatRequest, MakeHatResponse};
+
+#[tokio::main]
+pub async fn main() {
+    let client = Client::from_base_url(Url::parse("http://localhost:3000/twirp/")?)?;
+    let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
+    eprintln!("{:?}", resp);
 }
 ```
