@@ -71,6 +71,22 @@ impl Router {
         self.routes.insert(key, Box::new(g));
     }
 
+    /// Adds an async handler to the router for the given method and path.
+    pub fn add_async_handler<F, Fut>(&mut self, method: Method, path: &str, f: F)
+    where
+        F: Fn(Request<Body>) -> Fut + Clone + Sync + Send + 'static,
+        Fut: Future<Output = Result<Response<Body>, GenericError>> + Send,
+    {
+        let g = move |req| -> Box<
+            dyn Future<Output = Result<Response<Body>, GenericError>> + Unpin + Send,
+        > {
+            let f = f.clone();
+            Box::new(Box::pin(async move { f(req).await }))
+        };
+        let key = (method, path.to_string());
+        self.routes.insert(key, Box::new(g));
+    }
+
     /// Adds a twirp method handler to the router for the given path.
     pub fn add_method<F, Fut, Req, Resp>(&mut self, path: &str, f: F)
     where

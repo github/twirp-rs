@@ -23,7 +23,7 @@ pub async fn main() -> Result<(), GenericError> {
     eprintln!("{:?}", resp);
 
     // customize the client with middleware
-    let client = ClientBuilder::new(Url::parse("http://xyz:3000/twirp/")?)
+    let client = ClientBuilder::from_base_url(Url::parse("http://xyz:3000/twirp/")?)
         .with(RequestHeaders { hmac_key: None })
         .build()?;
     let resp = client

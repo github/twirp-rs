@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hyper::header::{InvalidHeaderValue, CONTENT_TYPE};
-use hyper::http::HeaderValue;
-use hyper::{HeaderMap, StatusCode};
+use hyper::header;
+use hyper::StatusCode;
 use thiserror::Error;
 use url::Url;
 
@@ -14,7 +13,7 @@ use crate::{error::*, to_proto_body};
 #[derive(Debug, Error)]
 pub enum ClientError {
     #[error(transparent)]
-    InvalidHeader(#[from] InvalidHeaderValue),
+    InvalidHeader(#[from] header::InvalidHeaderValue),
     #[error("base_url must end in /, but got: {0}")]
     InvalidBaseUrl(Url),
     #[error(transparent)]
@@ -45,17 +44,21 @@ pub type Result<T> = core::result::Result<T, ClientError>;
 /// Use ClientBuilder to build a TwirpClient.
 pub struct ClientBuilder {
     base_url: Url,
-    builder: reqwest::ClientBuilder,
+    http_client: reqwest::Client,
     middleware: Vec<Arc<dyn Middleware>>,
 }
 
 impl ClientBuilder {
-    pub fn new(base_url: Url) -> Self {
+    pub fn new(base_url: Url, http_client: reqwest::Client) -> Self {
         Self {
             base_url,
-            builder: reqwest::ClientBuilder::default(),
+            http_client,
             middleware: vec![],
         }
+    }
+
+    pub fn from_base_url(base_url: Url) -> Self {
+        Self::new(base_url, reqwest::Client::default())
     }
 
     /// Add middleware to the client that will be called on each request.
@@ -69,21 +72,13 @@ impl ClientBuilder {
         mw.push(Arc::new(middleware));
         Self {
             base_url: self.base_url,
-            builder: self.builder,
+            http_client: self.http_client,
             middleware: mw,
         }
     }
 
-    pub fn with_client_builder(self, builder: reqwest::ClientBuilder) -> Self {
-        Self {
-            base_url: self.base_url,
-            builder,
-            middleware: self.middleware,
-        }
-    }
-
     pub fn build(self) -> Result<Client> {
-        Client::new(self.base_url, self.builder, self.middleware)
+        Client::new(self.base_url, self.http_client, self.middleware)
     }
 }
 
@@ -92,7 +87,7 @@ impl ClientBuilder {
 #[derive(Clone)]
 pub struct Client {
     pub base_url: Arc<Url>,
-    client: Arc<reqwest::Client>,
+    http_client: Arc<reqwest::Client>,
     middlewares: Vec<Arc<dyn Middleware>>,
 }
 
@@ -100,7 +95,7 @@ impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TwirpClient")
             .field("base_url", &self.base_url)
-            .field("client", &self.client)
+            .field("client", &self.http_client)
             .field("middlewares", &self.middlewares.len())
             .finish()
     }
@@ -113,16 +108,13 @@ impl Client {
     /// you create one and **reuse** it.
     pub fn new(
         base_url: Url,
-        b: reqwest::ClientBuilder,
+        http_client: reqwest::Client,
         middlewares: Vec<Arc<dyn Middleware>>,
     ) -> Result<Self> {
         if base_url.path().ends_with('/') {
-            let mut headers: HeaderMap<HeaderValue> = HeaderMap::default();
-            headers.insert(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF.try_into()?);
-            let client = b.default_headers(headers).build()?;
             Ok(Client {
                 base_url: Arc::new(base_url),
-                client: Arc::new(client),
+                http_client: Arc::new(http_client),
                 middlewares,
             })
         } else {
@@ -135,7 +127,7 @@ impl Client {
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn from_base_url(base_url: Url) -> Result<Self> {
-        Self::new(base_url, reqwest::ClientBuilder::default(), vec![])
+        Self::new(base_url, reqwest::Client::default(), vec![])
     }
 
     /// Add middleware to this specific request stack. Middlewares are invoked
@@ -156,15 +148,20 @@ impl Client {
         O: prost::Message + Default,
     {
         let path = url.path().to_string();
-        let req = self.client.post(url).body(to_proto_body(body)).build()?;
+        let req = self
+            .http_client
+            .post(url)
+            .header(header::CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
+            .body(to_proto_body(body))
+            .build()?;
 
         // Create and execute the middleware handlers
-        let next = Next::new(&self.client, &self.middlewares);
+        let next = Next::new(&self.http_client, &self.middlewares);
         let resp = next.run(req).await?;
 
         // These have to be extracted because reading the body consumes `Response`.
         let status = resp.status();
-        let content_type = resp.headers().get(CONTENT_TYPE).cloned();
+        let content_type = resp.headers().get(header::CONTENT_TYPE).cloned();
 
         match (status, content_type) {
             (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
@@ -271,7 +268,7 @@ mod tests {
     #[tokio::test]
     async fn test_routes() {
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
-        let client = ClientBuilder::new(base_url)
+        let client = ClientBuilder::new(base_url, reqwest::Client::new())
             .with(AssertRouting {
                 expected_url: "http://localhost:3001/twirp/test.TestAPI/Ping",
             })
