@@ -86,8 +86,8 @@ impl ClientBuilder {
 /// requests.
 #[derive(Clone)]
 pub struct Client {
-    pub base_url: Arc<Url>,
-    http_client: Arc<reqwest::Client>,
+    pub base_url: Url,
+    http_client: reqwest::Client,
     middlewares: Vec<Arc<dyn Middleware>>,
 }
 
@@ -113,8 +113,8 @@ impl Client {
     ) -> Result<Self> {
         if base_url.path().ends_with('/') {
             Ok(Client {
-                base_url: Arc::new(base_url),
-                http_client: Arc::new(http_client),
+                base_url,
+                http_client,
                 middlewares,
             })
         } else {
