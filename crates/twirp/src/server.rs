@@ -52,8 +52,8 @@ impl Router {
         }
     }
 
-    /// Adds a handler to the router for the given method and path.
-    pub fn add_handler<F>(&mut self, method: Method, path: &str, f: F)
+    /// Adds a sync handler to the router for the given method and path.
+    pub fn add_sync_handler<F>(&mut self, method: Method, path: &str, f: F)
     where
         F: Fn(Request<Body>) -> Result<Response<Body>, GenericError>
             + Clone
@@ -72,7 +72,7 @@ impl Router {
     }
 
     /// Adds an async handler to the router for the given method and path.
-    pub fn add_async_handler<F, Fut>(&mut self, method: Method, path: &str, f: F)
+    pub fn add_handler<F, Fut>(&mut self, method: Method, path: &str, f: F)
     where
         F: Fn(Request<Body>) -> Fut + Clone + Sync + Send + 'static,
         Fut: Future<Output = Result<Response<Body>, GenericError>> + Send,

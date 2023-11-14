@@ -20,7 +20,7 @@ pub async fn main() {
     let mut router = Router::default();
     let example = Arc::new(HaberdasherAPIServer {});
     haberdash::add_service(&mut router, example.clone());
-    router.add_handler(Method::GET, "/_ping", |_req| {
+    router.add_sync_handler(Method::GET, "/_ping", |_req| {
         Ok(Response::new(Body::from("Pong\n")))
     });
     println!("{router:?}");
