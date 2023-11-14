@@ -6,6 +6,7 @@ use futures::Future;
 use hyper::{header, Body, Method, Request, Response};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use tokio::time::{Duration, Instant};
 
 use crate::error::*;
 use crate::headers::*;
@@ -100,19 +101,35 @@ impl Router {
         > {
             let f = f.clone();
             Box::new(Box::pin(async move {
+                let mut timings = *req
+                    .extensions()
+                    .get::<Timings>()
+                    .expect("timings must exist");
+                timings.request_received();
                 match parse_request(req).await {
-                    Ok((req, resp_fmt)) => write_response(f(req).await, resp_fmt),
+                    Ok((req, resp_fmt)) => {
+                        timings.request_parsed();
+                        let res = f(req).await;
+                        timings.response_handled();
+                        write_response(res, resp_fmt)
+                    }
                     Err(err) => {
                         // This is the only place we use tracing (would be nice to remove)
                         // tracing::error!(?err, "failed to parse request");
                         // TODO: We don't want to loose the underlying error
                         // here, but it might not be safe to include in the
                         // response like this always.
+                        timings.request_parsed();
                         let mut twirp_err = malformed("bad request");
                         twirp_err.insert_meta("error".to_string(), err.to_string());
                         twirp_err.to_response()
                     }
                 }
+                .map(|mut resp| {
+                    timings.response_written();
+                    resp.extensions_mut().insert(timings);
+                    resp
+                })
             }))
         };
         let key = (Method::POST, [self.prefix, path].join("/"));
@@ -123,8 +140,9 @@ impl Router {
 /// Serve a request using the given router.
 pub async fn serve(
     router: Arc<Router>,
-    req: Request<Body>,
+    mut req: Request<Body>,
 ) -> Result<Response<Body>, GenericError> {
+    req.extensions_mut().insert(Timings::default());
     let key = (req.method().clone(), req.uri().path().to_string());
     if let Some(handler) = router.routes.get(&key) {
         handler(req).await
@@ -194,6 +212,70 @@ where
         Err(err) => err.to_response(),
     }?;
     Ok(res)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Timings {
+    // When the request started.
+    pub start: Instant,
+    // When the request was received.
+    pub request_received: Option<Instant>,
+    // When the request body was parsed.
+    pub request_parsed: Option<Instant>,
+    // When the response handler returned.
+    pub response_handled: Option<Instant>,
+    // When the response was written.
+    pub response_written: Option<Instant>,
+}
+
+impl Default for Timings {
+    fn default() -> Self {
+        Self::new(Instant::now())
+    }
+}
+
+impl Timings {
+    pub fn new(start: Instant) -> Self {
+        Self {
+            start,
+            request_received: None,
+            request_parsed: None,
+            response_handled: None,
+            response_written: None,
+        }
+    }
+
+    pub fn received(&self) -> Option<Duration> {
+        self.request_received.map(|x| x - self.start)
+    }
+
+    fn request_received(&mut self) {
+        self.request_received = Some(Instant::now());
+    }
+
+    pub fn parsed(&self) -> Option<Duration> {
+        self.request_parsed.map(|x| x - self.start)
+    }
+
+    fn request_parsed(&mut self) {
+        self.request_parsed = Some(Instant::now());
+    }
+
+    pub fn handled(&self) -> Option<Duration> {
+        self.response_handled.map(|x| x - self.start)
+    }
+
+    fn response_handled(&mut self) {
+        self.response_handled = Some(Instant::now());
+    }
+
+    pub fn written(&self) -> Option<Duration> {
+        self.response_written.map(|x| x - self.start)
+    }
+
+    fn response_written(&mut self) {
+        self.response_written = Some(Instant::now());
+    }
 }
 
 #[cfg(test)]
