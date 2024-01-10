@@ -1,0 +1,46 @@
+#! /usr/bin/env bash
+# Unconditionally install the exact version of protoc that we use,
+# overwriting whatever is installed in /usr/local/bin.
+#
+# We have a CI job that checks the generated code, looking for an exact match,
+# so it's important that everyone use the same version of protoc.
+
+# Unofficial bash strict mode
+set -euo pipefail
+IFS=$'\n\t'
+
+# Don't use sudo if we're root. Not every Docker image has sudo.
+SUDO=sudo
+if [[ $EUID == "0" ]]; then
+    SUDO=
+fi
+
+if ! type -P unzip >/dev/null; then
+    echo "Installing unzip..."
+    # This should only happen on Linux. MacOS ships with unzip.
+    sudo apt-get install -y unzip
+fi
+
+echo "Installing protoc..."
+
+# Download protoc
+protoc_version="3.17.0"
+protoc_os="osx-x86_64"
+if [[ $OSTYPE == linux* ]]; then
+    protoc_os="linux-x86_64"
+fi
+mkdir _tools
+cd _tools
+protoc_zip="protoc-$protoc_version-$protoc_os.zip"
+curl -OL "https://github.com/protocolbuffers/protobuf/releases/download/v$protoc_version/$protoc_zip"
+
+# Install protoc to /usr/local
+prefix=/usr/local
+unzip -o $protoc_zip -d tmp
+$SUDO mkdir -p $prefix/bin
+$SUDO mv tmp/bin/protoc $prefix/bin/protoc
+$SUDO mkdir -p $prefix/include/google/protobuf
+$SUDO rm -rf $prefix/include/google/protobuf
+$SUDO mv tmp/include/google/protobuf $prefix/include/google/protobuf
+cd ..
+rm -rf _tools

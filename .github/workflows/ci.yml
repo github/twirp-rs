@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: Install protoc
+      run: script/install-protoc
     - name: Build
       run: cargo build
     - name: Run tests
