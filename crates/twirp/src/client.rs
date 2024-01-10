@@ -1,19 +1,18 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hyper::header;
+use hyper::header::{InvalidHeaderValue, CONTENT_TYPE};
 use hyper::StatusCode;
 use thiserror::Error;
 use url::Url;
 
-use crate::headers::*;
-use crate::{error::*, to_proto_body};
+use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
+use crate::{to_proto_body, TwirpErrorResponse};
 
-/// A twirp client error.
 #[derive(Debug, Error)]
 pub enum ClientError {
     #[error(transparent)]
-    InvalidHeader(#[from] header::InvalidHeaderValue),
+    InvalidHeader(#[from] InvalidHeaderValue),
     #[error("base_url must end in /, but got: {0}")]
     InvalidBaseUrl(Url),
     #[error(transparent)]
@@ -39,9 +38,8 @@ pub enum ClientError {
     TwirpError(TwirpErrorResponse),
 }
 
-pub type Result<T> = core::result::Result<T, ClientError>;
+pub type Result<T, E = ClientError> = std::result::Result<T, E>;
 
-/// Use ClientBuilder to build a TwirpClient.
 pub struct ClientBuilder {
     base_url: Url,
     http_client: reqwest::Client,
@@ -52,13 +50,9 @@ impl ClientBuilder {
     pub fn new(base_url: Url, http_client: reqwest::Client) -> Self {
         Self {
             base_url,
-            http_client,
             middleware: vec![],
+            http_client,
         }
-    }
-
-    pub fn from_base_url(base_url: Url) -> Self {
-        Self::new(base_url, reqwest::Client::default())
     }
 
     /// Add middleware to the client that will be called on each request.
@@ -127,7 +121,7 @@ impl Client {
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn from_base_url(base_url: Url) -> Result<Self> {
-        Self::new(base_url, reqwest::Client::default(), vec![])
+        Self::new(base_url, reqwest::Client::new(), vec![])
     }
 
     /// Add middleware to this specific request stack. Middlewares are invoked
@@ -151,7 +145,7 @@ impl Client {
         let req = self
             .http_client
             .post(url)
-            .header(header::CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
+            .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
             .body(to_proto_body(body))
             .build()?;
 
@@ -161,8 +155,9 @@ impl Client {
 
         // These have to be extracted because reading the body consumes `Response`.
         let status = resp.status();
-        let content_type = resp.headers().get(header::CONTENT_TYPE).cloned();
+        let content_type = resp.headers().get(CONTENT_TYPE).cloned();
 
+        // TODO: Include more info in the error cases: request path, content-type, etc.
         match (status, content_type) {
             (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
                 O::decode(resp.bytes().await?).map_err(|e| e.into())
@@ -268,6 +263,7 @@ mod tests {
     #[tokio::test]
     async fn test_routes() {
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
+
         let client = ClientBuilder::new(base_url, reqwest::Client::new())
             .with(AssertRouting {
                 expected_url: "http://localhost:3001/twirp/test.TestAPI/Ping",

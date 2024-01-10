@@ -8,9 +8,9 @@ use hyper::{Body, Request, Server};
 use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
 
-use crate::*;
+use crate::{error, Client, GenericError, Result, Router, TwirpErrorResponse};
 
-pub async fn run_test_server(port: u16) -> JoinHandle<core::result::Result<(), hyper::Error>> {
+pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), hyper::Error>> {
     let router = test_api_router().await;
     let service = make_service_fn(move |_| {
         let router = router.clone();
@@ -84,15 +84,12 @@ pub struct TestAPIServer;
 
 #[async_trait]
 impl TestAPI for TestAPIServer {
-    async fn ping(
-        &self,
-        req: PingRequest,
-    ) -> core::result::Result<PingResponse, TwirpErrorResponse> {
+    async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpErrorResponse> {
         Ok(PingResponse { name: req.name })
     }
 
-    async fn boom(&self, _: PingRequest) -> core::result::Result<PingResponse, TwirpErrorResponse> {
-        Err(internal("boom!"))
+    async fn boom(&self, _: PingRequest) -> Result<PingResponse, TwirpErrorResponse> {
+        Err(error::internal("boom!"))
     }
 }
 
@@ -117,14 +114,8 @@ impl TestAPIClient for Client {
 
 #[async_trait]
 pub trait TestAPI {
-    async fn ping(
-        &self,
-        req: PingRequest,
-    ) -> core::result::Result<PingResponse, TwirpErrorResponse>;
-    async fn boom(
-        &self,
-        req: PingRequest,
-    ) -> core::result::Result<PingResponse, TwirpErrorResponse>;
+    async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpErrorResponse>;
+    async fn boom(&self, req: PingRequest) -> Result<PingResponse, TwirpErrorResponse>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

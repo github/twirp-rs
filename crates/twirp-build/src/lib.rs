@@ -78,7 +78,7 @@ where
             // Define: <METHOD>
             writeln!(
                 buf,
-                "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::ClientError>;",
+                "    async fn {}(&self, req: {}) -> Result<{}, twirp::ClientError>;",
                 m.name, m.input_type, m.output_type,
             )
             .unwrap();
@@ -96,7 +96,7 @@ where
             // Define the rpc `<METHOD>`
             writeln!(
                 buf,
-                "    async fn {}(&self, req: {}) -> Result<{}, twirp::client::ClientError> {{",
+                "    async fn {}(&self, req: {}) -> Result<{}, twirp::ClientError> {{",
                 m.name, m.input_type, m.output_type,
             )
             .unwrap();

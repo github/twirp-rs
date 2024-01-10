@@ -1,7 +1,6 @@
 [toolchain]
-channel = "1.70.0"
-components = [ "rustfmt", "clippy", "llvm-tools-preview" ]
-targets = [ "x86_64-unknown-linux-gnu", "x86_64-apple-darwin" ]
+channel = "1.75.0"
+components = [ "rustfmt" ]
 profile = "default"
 
 # Details on supported fields: https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file

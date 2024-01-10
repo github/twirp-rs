@@ -27,7 +27,7 @@ Add the `twirp-build` crate as a build dependency in your `Cargo.toml` (you'll n
 # Cargo.toml
 [build-dependencies]
 twirp-build = "0.1"
-prost-build = "0.11"
+prost-build = "0.12"
 ```
 
 Add a `build.rs` file to your project to compile the protos and generate Rust code:

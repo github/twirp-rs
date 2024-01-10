@@ -6,26 +6,21 @@ use futures::Future;
 use hyper::{header, Body, Method, Request, Response};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use tokio::time::{Duration, Instant};
 
-use crate::error::*;
-use crate::headers::*;
-use crate::to_proto_body;
+use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
+use crate::{error, to_proto_body, GenericError, TwirpErrorResponse};
 
-/// A function that handles a request and returns a response.
-type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
-
-/// Type alias for a handler response.
 type HandlerResponse =
     Box<dyn Future<Output = Result<Response<Body>, GenericError>> + Unpin + Send>;
 
-/// A Router maps a request (method, path) tuple to a handler.
+type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
+
+/// A Router maps a request to a handler.
 pub struct Router {
     routes: HashMap<(Method, String), HandlerFn>,
     prefix: &'static str,
 }
 
-/// The canonical twirp path prefix. You don't have to use this, but it's the default.
 pub const DEFAULT_TWIRP_PATH_PREFIX: &str = "/twirp";
 
 impl Default for Router {
@@ -53,7 +48,7 @@ impl Router {
         }
     }
 
-    /// Adds a sync handler to the router for the given method and path.
+    /// Adds a handler to the router for the given method and path.
     pub fn add_sync_handler<F>(&mut self, method: Method, path: &str, f: F)
     where
         F: Fn(Request<Body>) -> Result<Response<Body>, GenericError>
@@ -101,35 +96,19 @@ impl Router {
         > {
             let f = f.clone();
             Box::new(Box::pin(async move {
-                let mut timings = *req
-                    .extensions()
-                    .get::<Timings>()
-                    .expect("timings must exist");
-                timings.request_received();
                 match parse_request(req).await {
-                    Ok((req, resp_fmt)) => {
-                        timings.request_parsed();
-                        let res = f(req).await;
-                        timings.response_handled();
-                        write_response(res, resp_fmt)
-                    }
+                    Ok((req, resp_fmt)) => write_response(f(req).await, resp_fmt),
                     Err(err) => {
                         // This is the only place we use tracing (would be nice to remove)
                         // tracing::error!(?err, "failed to parse request");
                         // TODO: We don't want to loose the underlying error
                         // here, but it might not be safe to include in the
                         // response like this always.
-                        timings.request_parsed();
-                        let mut twirp_err = malformed("bad request");
+                        let mut twirp_err = error::malformed("bad request");
                         twirp_err.insert_meta("error".to_string(), err.to_string());
                         twirp_err.to_response()
                     }
                 }
-                .map(|mut resp| {
-                    timings.response_written();
-                    resp.extensions_mut().insert(timings);
-                    resp
-                })
             }))
         };
         let key = (Method::POST, [self.prefix, path].join("/"));
@@ -137,17 +116,15 @@ impl Router {
     }
 }
 
-/// Serve a request using the given router.
 pub async fn serve(
     router: Arc<Router>,
-    mut req: Request<Body>,
+    req: Request<Body>,
 ) -> Result<Response<Body>, GenericError> {
-    req.extensions_mut().insert(Timings::default());
     let key = (req.method().clone(), req.uri().path().to_string());
     if let Some(handler) = router.routes.get(&key) {
         handler(req).await
     } else {
-        bad_route("not found").to_response()
+        error::bad_route("not found").to_response()
     }
 }
 
@@ -214,70 +191,6 @@ where
     Ok(res)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Timings {
-    // When the request started.
-    pub start: Instant,
-    // When the request was received.
-    pub request_received: Option<Instant>,
-    // When the request body was parsed.
-    pub request_parsed: Option<Instant>,
-    // When the response handler returned.
-    pub response_handled: Option<Instant>,
-    // When the response was written.
-    pub response_written: Option<Instant>,
-}
-
-impl Default for Timings {
-    fn default() -> Self {
-        Self::new(Instant::now())
-    }
-}
-
-impl Timings {
-    pub fn new(start: Instant) -> Self {
-        Self {
-            start,
-            request_received: None,
-            request_parsed: None,
-            response_handled: None,
-            response_written: None,
-        }
-    }
-
-    pub fn received(&self) -> Option<Duration> {
-        self.request_received.map(|x| x - self.start)
-    }
-
-    fn request_received(&mut self) {
-        self.request_received = Some(Instant::now());
-    }
-
-    pub fn parsed(&self) -> Option<Duration> {
-        self.request_parsed.map(|x| x - self.start)
-    }
-
-    fn request_parsed(&mut self) {
-        self.request_parsed = Some(Instant::now());
-    }
-
-    pub fn handled(&self) -> Option<Duration> {
-        self.response_handled.map(|x| x - self.start)
-    }
-
-    fn response_handled(&mut self) {
-        self.response_handled = Some(Instant::now());
-    }
-
-    pub fn written(&self) -> Option<Duration> {
-        self.response_written.map(|x| x - self.start)
-    }
-
-    fn response_written(&mut self) {
-        self.response_written = Some(Instant::now());
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -290,7 +203,7 @@ mod tests {
         let req = Request::get("/nothing").body(Body::empty()).unwrap();
         let resp = serve(router, req).await.unwrap();
         let data = read_err_body(resp.into_body()).await;
-        assert_eq!(data, bad_route("not found"));
+        assert_eq!(data, error::bad_route("not found"));
     }
 
     #[tokio::test]
@@ -326,7 +239,7 @@ mod tests {
         // TODO: I think malformed should return some info about what was wrong
         // with the request, but we don't want to leak server errors that have
         // other details.
-        let mut expected = malformed("bad request");
+        let mut expected = error::malformed("bad request");
         expected.insert_meta(
             "error".to_string(),
             "EOF while parsing a value at line 1 column 0".to_string(),
@@ -347,6 +260,6 @@ mod tests {
         let resp = serve(router, req).await.unwrap();
         assert!(resp.status().is_server_error(), "{:?}", resp);
         let data = read_err_body(resp.into_body()).await;
-        assert_eq!(data, internal("boom!"));
+        assert_eq!(data, error::internal("boom!"));
     }
 }
