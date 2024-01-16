@@ -30,6 +30,34 @@ Here are a few things you can do that will increase the likelihood of your pull 
 - Keep your change as focused as possible. If there are multiple changes you would like to make that are not dependent upon each other, consider submitting them as separate pull requests.
 - Write a [good commit message](http://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html).
 
+## Setting up a local build
+
+Make sure you have [rust toolchain installed](https://www.rust-lang.org/tools/install) on your system and then:
+
+```sh
+cargo build && cargo test
+```
+
+Run clippy and fix any lints:
+
+```sh
+cargo fmt --all -- --check
+cargo clippy -- --deny warnings -D clippy::unwrap_used
+cargo clippy --tests -- --deny warnings -A clippy::unwrap_used
+```
+
+## Releasing (write access required)
+
+If you are one of the maintainers of this package then follow this process:
+
+1. Create a PR for this release with following changes:
+  - Updated `CHANGELOG.md` with desired change comments and ensure that it has the version to be released with date at the top.
+  - Go through all recent PRs and make sure they are properly accounted for.
+  - Make sure all changelog entries have links back to their PR(s) if appropriate.
+  - Update package version in Cargo.toml.
+1. Get an approval and merge your PR.
+1. Run ./script/publish from main `branch` supplying your token and version information.
+
 ## Resources
 
 - [How to Contribute to Open Source](https://opensource.guide/how-to-contribute/)
