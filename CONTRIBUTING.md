@@ -56,7 +56,7 @@ If you are one of the maintainers of this package then follow this process:
   - Make sure all changelog entries have links back to their PR(s) if appropriate.
   - Update package version in Cargo.toml.
 1. Get an approval and merge your PR.
-1. Run ./script/publish from main `branch` supplying your token and version information.
+1. Run ./script/publish from the `main` branch supplying your token and version information.
 
 ## Resources
 
