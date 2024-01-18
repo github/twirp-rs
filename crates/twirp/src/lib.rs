@@ -10,7 +10,7 @@ pub mod test;
 
 pub use client::{Client, ClientBuilder, ClientError, Middleware, Next, Result};
 pub use error::*; // many constructors like `invalid_argument()`
-pub use server::{serve, Router};
+pub use server::{serve, Router, Timings};
 
 // Re-export `reqwest` so that it's easy to implement middleware.
 pub use reqwest;
