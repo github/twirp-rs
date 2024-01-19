@@ -4,7 +4,7 @@
 
 The [canonical implementation](https://github.com/twitchtv/twirp) is in Golang, this is a Rust implementation of the protocol. Rust protocol buffer support is provided by the [`prost`](https://github.com/tokio-rs/prost) ecosystem.
 
-Unlike [`prost-twirp`](https://github.com/sourcefrog/prost-twirp), the generated traits for serving and accessing RPCs are implemented atop `async` functions. Because traits containing `async` functions [are not directly supported](https://smallcultfollowing.com/babysteps/blog/2019/10/26/async-fn-in-traits-are-hard/) in Rust, this crate uses the [`async_trait`](https://github.com/dtolnay/async-trait) macro to encapsulate the scaffolding required to make them work.
+Unlike [`prost-twirp`](https://github.com/sourcefrog/prost-twirp), the generated traits for serving and accessing RPCs are implemented atop `async` functions. Because traits containing `async` functions [are not directly supported](https://smallcultfollowing.com/babysteps/blog/2019/10/26/async-fn-in-traits-are-hard/) in Rust versions prior to 1.75, this crate uses the [`async_trait`](https://github.com/dtolnay/async-trait) macro to encapsulate the scaffolding required to make them work.
 
 ## Usage
 
