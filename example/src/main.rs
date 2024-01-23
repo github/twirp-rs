@@ -1,10 +1,10 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Response, Server};
-use twirp::{invalid_argument, GenericError, Router, TwirpErrorResponse};
+use axum::routing::get;
+use twirp::{invalid_argument, Router, TwirpErrorResponse};
 
 pub mod service {
     pub mod haberdash {
@@ -15,25 +15,25 @@ pub mod service {
 }
 use service::haberdash::v1::{self as haberdash, MakeHatRequest, MakeHatResponse};
 
+async fn ping() -> &'static str {
+    "Pong\n"
+}
+
 #[tokio::main]
 pub async fn main() {
-    let mut router = Router::default();
-    let example = Arc::new(HaberdasherAPIServer {});
-    haberdash::add_service(&mut router, example.clone());
-    router.add_sync_handler(Method::GET, "/_ping", |_req| {
-        Ok(Response::new(Body::from("Pong\n")))
-    });
-    println!("{router:?}");
-    let router = Arc::new(router);
-    let service = make_service_fn(move |_| {
-        let router = router.clone();
-        async { Ok::<_, GenericError>(service_fn(move |req| twirp::serve(router.clone(), req))) }
-    });
+    let api_impl = Arc::new(HaberdasherAPIServer {});
+    let twirp_routes = Router::new().nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
+    let app = Router::new()
+        .nest("/twirp", twirp_routes)
+        .route("/_ping", get(ping))
+        .fallback(twirp::server::not_found_handler);
 
-    let addr = ([127, 0, 0, 1], 3000).into();
-    let server = Server::bind(&addr).serve(service);
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let tcp_listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .expect("failed to bind");
     println!("Listening on {addr}");
-    if let Err(e) = server.await {
+    if let Err(e) = axum::serve(tcp_listener, app).await {
         eprintln!("server error: {}", e);
     }
 }

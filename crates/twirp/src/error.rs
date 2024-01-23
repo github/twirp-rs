@@ -2,7 +2,10 @@
 
 use std::collections::HashMap;
 
-use hyper::{header, Body, Response, StatusCode};
+use axum::body::Body;
+use axum::response::IntoResponse;
+use http::header::{self, HeaderMap, HeaderValue};
+use hyper::{Response, StatusCode};
 use serde::{Deserialize, Serialize, Serializer};
 
 // Alias for a generic error
@@ -149,14 +152,20 @@ impl TwirpErrorResponse {
     pub fn insert_meta(&mut self, key: String, value: String) -> Option<String> {
         self.meta.insert(key, value)
     }
+}
 
-    pub fn to_response(&self) -> Result<Response<Body>, GenericError> {
-        let json = serde_json::to_string(self)?;
-        let response = Response::builder()
-            .status(self.code.http_status_code())
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(json))?;
-        Ok(response)
+impl IntoResponse for TwirpErrorResponse {
+    fn into_response(self) -> Response<Body> {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+
+        let json =
+            serde_json::to_string(&self).expect("JSON serialization of an error should not fail");
+
+        (self.code.http_status_code(), headers, json).into_response()
     }
 }
 

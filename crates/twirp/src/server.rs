@@ -1,154 +1,20 @@
-use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::Arc;
 
+use axum::body::Body;
+use axum::response::IntoResponse;
+pub use axum::Router;
 use futures::Future;
-use hyper::{header, Body, Method, Request, Response};
+use http_body_util::BodyExt;
+use hyper::{header, Request, Response};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::time::{Duration, Instant};
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
-use crate::{error, to_proto_body, GenericError, TwirpErrorResponse};
-
-/// A function that handles a request and returns a response.
-type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
-
-/// Type alias for a handler response.
-type HandlerResponse =
-    Box<dyn Future<Output = Result<Response<Body>, GenericError>> + Unpin + Send>;
-
-/// A Router maps a request (method, path) tuple to a handler.
-pub struct Router {
-    routes: HashMap<(Method, String), HandlerFn>,
-    prefix: &'static str,
-}
+use crate::{error, serialize_proto_message, GenericError, TwirpErrorResponse};
 
 /// The canonical twirp path prefix. You don't have to use this, but it's the default.
 pub const DEFAULT_TWIRP_PATH_PREFIX: &str = "/twirp";
-
-impl Default for Router {
-    fn default() -> Self {
-        Self::new(DEFAULT_TWIRP_PATH_PREFIX)
-    }
-}
-
-impl Debug for Router {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Router")
-            .field("routes", &self.routes.keys())
-            .finish()
-    }
-}
-
-impl Router {
-    /// Create a new router at the given prefix. Since this prefix is
-    /// canonically `/twirp`, it is recommended to use `Router::default()`
-    /// instead.
-    pub fn new(prefix: &'static str) -> Self {
-        Self {
-            routes: Default::default(),
-            prefix,
-        }
-    }
-
-    /// Adds a sync handler to the router for the given method and path.
-    pub fn add_sync_handler<F>(&mut self, method: Method, path: &str, f: F)
-    where
-        F: Fn(Request<Body>) -> Result<Response<Body>, GenericError>
-            + Clone
-            + Sync
-            + Send
-            + 'static,
-    {
-        let g = move |req| -> Box<
-            dyn Future<Output = Result<Response<Body>, GenericError>> + Unpin + Send,
-        > {
-            let f = f.clone();
-            Box::new(Box::pin(async move { f(req) }))
-        };
-        let key = (method, path.to_string());
-        self.routes.insert(key, Box::new(g));
-    }
-
-    /// Adds an async handler to the router for the given method and path.
-    pub fn add_handler<F, Fut>(&mut self, method: Method, path: &str, f: F)
-    where
-        F: Fn(Request<Body>) -> Fut + Clone + Sync + Send + 'static,
-        Fut: Future<Output = Result<Response<Body>, GenericError>> + Send,
-    {
-        let g = move |req| -> Box<
-            dyn Future<Output = Result<Response<Body>, GenericError>> + Unpin + Send,
-        > {
-            let f = f.clone();
-            Box::new(Box::pin(async move { f(req).await }))
-        };
-        let key = (method, path.to_string());
-        self.routes.insert(key, Box::new(g));
-    }
-
-    /// Adds a twirp method handler to the router for the given path.
-    pub fn add_method<F, Fut, Req, Resp>(&mut self, path: &str, f: F)
-    where
-        F: Fn(Req) -> Fut + Clone + Sync + Send + 'static,
-        Fut: Future<Output = Result<Resp, TwirpErrorResponse>> + Send,
-        Req: prost::Message + Default + serde::de::DeserializeOwned,
-        Resp: prost::Message + serde::Serialize,
-    {
-        let g = move |req: Request<Body>| -> Box<
-            dyn Future<Output = Result<Response<Body>, GenericError>> + Unpin + Send,
-        > {
-            let f = f.clone();
-            Box::new(Box::pin(async move {
-                let mut timings = *req
-                    .extensions()
-                    .get::<Timings>()
-                    .expect("invariant violated: timing info not present in request");
-                match parse_request(req, &mut timings).await {
-                    Ok((req, resp_fmt)) => {
-                        let res = f(req).await;
-                        timings.set_response_handled();
-                        write_response(res, resp_fmt)
-                    }
-                    Err(err) => {
-                        // This is the only place we use tracing (would be nice to remove)
-                        // tracing::error!(?err, "failed to parse request");
-                        // TODO: We don't want to loose the underlying error
-                        // here, but it might not be safe to include in the
-                        // response like this always.
-                        let mut twirp_err = error::malformed("bad request");
-                        twirp_err.insert_meta("error".to_string(), err.to_string());
-                        twirp_err.to_response()
-                    }
-                }
-                .map(|mut resp| {
-                    timings.set_response_written();
-                    resp.extensions_mut().insert(timings);
-                    resp
-                })
-            }))
-        };
-        let key = (Method::POST, [self.prefix, path].join("/"));
-        self.routes.insert(key, Box::new(g));
-    }
-}
-
-/// Serve a request using the given router.
-pub async fn serve(
-    router: Arc<Router>,
-    mut req: Request<Body>,
-) -> Result<Response<Body>, GenericError> {
-    if req.extensions().get::<Timings>().is_none() {
-        let start = tokio::time::Instant::now();
-        req.extensions_mut().insert(Timings::new(start));
-    }
-    let key = (req.method().clone(), req.uri().path().to_string());
-    if let Some(handler) = router.routes.get(&key) {
-        handler(req).await
-    } else {
-        error::bad_route("not found").to_response()
-    }
-}
 
 // TODO: Properly implement JsonPb (de)serialization as it is slightly different
 // than standard JSON.
@@ -172,6 +38,49 @@ impl BodyFormat {
     }
 }
 
+/// Entry point used in code generated by `twirp-build`.
+pub async fn handle_request<F, Fut, Req, Resp>(req: Request<Body>, f: F) -> Response<Body>
+where
+    F: FnOnce(Req) -> Fut + Clone + Sync + Send + 'static,
+    Fut: Future<Output = Result<Resp, TwirpErrorResponse>> + Send,
+    Req: prost::Message + Default + serde::de::DeserializeOwned,
+    Resp: prost::Message + serde::Serialize,
+{
+    let mut timings = *req
+        .extensions()
+        .get::<Timings>()
+        .expect("invariant violated: timing info not present in request");
+
+    let (req, resp_fmt) = match parse_request(req, &mut timings).await {
+        Ok(pair) => pair,
+        Err(err) => {
+            // This is the only place we use tracing (would be nice to remove)
+            // tracing::error!(?err, "failed to parse request");
+            // TODO: We don't want to lose the underlying error here, but it might not be safe to
+            // include in the response like this always.
+            let mut twirp_err = error::malformed("bad request");
+            twirp_err.insert_meta("error".to_string(), err.to_string());
+            return twirp_err.into_response();
+        }
+    };
+
+    let res = f(req).await;
+    timings.set_response_handled();
+
+    let mut resp = match write_response(res, resp_fmt) {
+        Ok(resp) => resp,
+        Err(err) => {
+            let mut twirp_err = error::unknown("error serializing response");
+            twirp_err.insert_meta("error".to_string(), err.to_string());
+            return twirp_err.into_response();
+        }
+    };
+    timings.set_response_written();
+
+    resp.extensions_mut().insert(timings);
+    resp
+}
+
 async fn parse_request<T>(
     req: Request<Body>,
     timings: &mut Timings,
@@ -180,10 +89,10 @@ where
     T: prost::Message + Default + DeserializeOwned,
 {
     let format = BodyFormat::from_content_type(&req);
-    let bytes = hyper::body::to_bytes(req.into_body()).await?;
+    let bytes = req.into_body().collect().await?.to_bytes();
     timings.set_received();
     let request = match format {
-        BodyFormat::Pb => T::decode(bytes)?,
+        BodyFormat::Pb => T::decode(&bytes[..])?,
         BodyFormat::JsonPb => serde_json::from_slice(&bytes)?,
     };
     timings.set_parsed();
@@ -199,23 +108,26 @@ where
 {
     let res = match response {
         Ok(response) => match response_format {
-            BodyFormat::Pb => {
-                let response = Response::builder()
-                    .header(header::CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-                    .body(to_proto_body(response))?;
-                Ok(response)
-            }
+            BodyFormat::Pb => Response::builder()
+                .header(header::CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
+                .body(Body::from(serialize_proto_message(response)))?,
             _ => {
                 let data = serde_json::to_string(&response)?;
-                let response = Response::builder()
+                Response::builder()
                     .header(header::CONTENT_TYPE, CONTENT_TYPE_JSON)
-                    .body(Body::from(data))?;
-                Ok(response)
+                    .body(Body::from(data))?
             }
         },
-        Err(err) => err.to_response(),
-    }?;
+        Err(err) => err.into_response(),
+    };
     Ok(res)
+}
+
+/// Axum handler function that returns 404 Not Found with a Twirp JSON payload.
+///
+/// `axum::Router`'s default fallback handler returns a 404 Not Found with no body content.
+pub async fn not_found_handler() -> Response<Body> {
+    error::bad_route("not found").into_response()
 }
 
 /// Contains timing information associated with a request.
@@ -302,30 +214,29 @@ mod tests {
     use super::*;
     use crate::test::*;
 
+    use tower::Service;
+
+    fn timings() -> Timings {
+        Timings::new(Instant::now())
+    }
+
     #[tokio::test]
     async fn test_bad_route() {
-        let router = Arc::new(Router::default());
-        let req = Request::get("/nothing").body(Body::empty()).unwrap();
-        let resp = serve(router, req).await.unwrap();
+        let mut router = test_api_router();
+        let req = Request::get("/nothing")
+            .extension(timings())
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.call(req).await.unwrap();
         let data = read_err_body(resp.into_body()).await;
         assert_eq!(data, error::bad_route("not found"));
     }
 
     #[tokio::test]
-    async fn test_routes() {
-        let router = test_api_router().await;
-        assert!(router
-            .routes
-            .contains_key(&(Method::POST, "/twirp/test.TestAPI/Ping".to_string())));
-        assert!(router
-            .routes
-            .contains_key(&(Method::POST, "/twirp/test.TestAPI/Boom".to_string())));
-    }
-
-    #[tokio::test]
     async fn test_ping_success() {
-        let router = test_api_router().await;
-        let resp = serve(router, gen_ping_request("hi")).await.unwrap();
+        let mut router = test_api_router();
+        let resp = router.call(gen_ping_request("hi")).await.unwrap();
         assert!(resp.status().is_success(), "{:?}", resp);
         let data: PingResponse = read_json_body(resp.into_body()).await;
         assert_eq!(&data.name, "hi");
@@ -333,11 +244,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_ping_invalid_request() {
-        let router = test_api_router().await;
+        let mut router = test_api_router();
         let req = Request::post("/twirp/test.TestAPI/Ping")
+            .extension(timings())
             .body(Body::empty()) // not a valid request
             .unwrap();
-        let resp = serve(router, req).await.unwrap();
+        let resp = router.call(req).await.unwrap();
         assert!(resp.status().is_client_error(), "{:?}", resp);
         let data = read_err_body(resp.into_body()).await;
 
@@ -354,15 +266,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_boom() {
-        let router = test_api_router().await;
+        let mut router = test_api_router();
         let req = serde_json::to_string(&PingRequest {
             name: "hi".to_string(),
         })
         .unwrap();
         let req = Request::post("/twirp/test.TestAPI/Boom")
+            .extension(timings())
             .body(Body::from(req))
             .unwrap();
-        let resp = serve(router, req).await.unwrap();
+        let resp = router.call(req).await.unwrap();
         assert!(resp.status().is_server_error(), "{:?}", resp);
         let data = read_err_body(resp.into_body()).await;
         assert_eq!(data, error::internal("boom!"));

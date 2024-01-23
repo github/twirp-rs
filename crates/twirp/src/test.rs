@@ -3,63 +3,79 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Request, Server};
+use axum::body::Body;
+use axum::Router;
+use http_body_util::BodyExt;
+use hyper::Request;
 use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 
-use crate::{error, Client, GenericError, Result, Router, TwirpErrorResponse};
+use crate::server::Timings;
+use crate::{error, Client, Result, TwirpErrorResponse};
 
-pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), hyper::Error>> {
-    let router = test_api_router().await;
-    let service = make_service_fn(move |_| {
-        let router = router.clone();
-        async { Ok::<_, GenericError>(service_fn(move |req| crate::serve(router.clone(), req))) }
-    });
-
-    let addr = ([127, 0, 0, 1], port).into();
-    let server = Server::bind(&addr).serve(service);
+pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), std::io::Error>> {
+    let router = test_api_router();
+    let addr: std::net::SocketAddr = ([127, 0, 0, 1], port).into();
+    let tcp_listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     println!("Listening on {addr}");
-    let h = tokio::spawn(server);
+    let h = tokio::spawn(async move { axum::serve(tcp_listener, router).await });
     tokio::time::sleep(Duration::from_millis(100)).await;
     h
 }
 
-pub async fn test_api_router() -> Arc<Router> {
+pub fn test_api_router() -> Router {
     let api = Arc::new(TestAPIServer {});
-    let mut router = Router::default();
-    // NB: This would be generated
-    {
-        let api = api.clone();
-        router.add_method("test.TestAPI/Ping", move |req| {
-            let api = api.clone();
-            async move { api.ping(req).await }
-        });
-    }
-    {
-        router.add_method("test.TestAPI/Boom", move |req| {
-            let api = api.clone();
-            async move { api.boom(req).await }
-        });
-    }
-    Arc::new(router)
+
+    // NB: This part would be generated
+    let test_router = crate::Router::new()
+        .route(
+            "/Ping",
+            crate::details::post(
+                |crate::details::State(api): crate::details::State<Arc<TestAPIServer>>,
+                 req: crate::details::Request| async move {
+                    crate::server::handle_request(
+                        req,
+                        move |req| async move { api.ping(req).await },
+                    )
+                    .await
+                },
+            ),
+        )
+        .route(
+            "/Boom",
+            crate::details::post(
+                |crate::details::State(api): crate::details::State<Arc<TestAPIServer>>,
+                 req: crate::details::Request| async move {
+                    crate::server::handle_request(
+                        req,
+                        move |req| async move { api.boom(req).await },
+                    )
+                    .await
+                },
+            ),
+        )
+        .fallback(crate::server::not_found_handler)
+        .with_state(api);
+
+    axum::Router::new()
+        .nest("/twirp/test.TestAPI", test_router)
+        .fallback(crate::server::not_found_handler)
 }
 
-pub fn gen_ping_request(name: &str) -> Request<hyper::Body> {
+pub fn gen_ping_request(name: &str) -> Request<Body> {
     let req = serde_json::to_string(&PingRequest {
         name: name.to_string(),
     })
     .expect("will always be valid json");
     Request::post("/twirp/test.TestAPI/Ping")
+        .extension(Timings::new(Instant::now()))
         .body(Body::from(req))
         .expect("always a valid twirp request")
 }
 
 pub async fn read_string_body(body: Body) -> String {
-    let data = hyper::body::to_bytes(body)
-        .await
-        .expect("invalid body")
-        .to_vec();
+    let data = Vec::<u8>::from(body.collect().await.expect("invalid body").to_bytes());
     String::from_utf8(data).expect("non-utf8 body")
 }
 
@@ -67,10 +83,7 @@ pub async fn read_json_body<T>(body: Body) -> T
 where
     T: DeserializeOwned,
 {
-    let data = hyper::body::to_bytes(body)
-        .await
-        .expect("invalid body")
-        .to_vec();
+    let data = Vec::<u8>::from(body.collect().await.expect("invalid body").to_bytes());
     serde_json::from_slice(&data).expect("twirp response isn't valid JSON")
 }
 
