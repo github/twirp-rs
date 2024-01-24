@@ -2,7 +2,6 @@
 pub mod client;
 
 mod body;
-
 pub mod error;
 pub mod headers;
 pub mod server;
@@ -10,7 +9,7 @@ pub mod server;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
 
-pub use body::*;
+pub use body::Body;
 pub use client::{Client, ClientBuilder, ClientError, Middleware, Next, Result};
 pub use error::*; // many constructors like `invalid_argument()`
 pub use server::{serve, Router, Timings};

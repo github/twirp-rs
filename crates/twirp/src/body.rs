@@ -1,3 +1,4 @@
+use std::fmt::{self, Debug, Formatter};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -11,8 +12,15 @@ use crate::GenericError;
 
 type BoxBody = UnsyncBoxBody<Bytes, GenericError>;
 
+/// Generic body type (like `axum::body::Body`).
 #[pin_project]
 pub struct Body(#[pin] BoxBody);
+
+impl Debug for Body {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Body").finish()
+    }
+}
 
 impl From<Bytes> for Body {
     fn from(bytes: Bytes) -> Self {
@@ -34,8 +42,15 @@ impl From<String> for Body {
     }
 }
 
+impl From<&'static str> for Body {
+    fn from(text: &'static str) -> Self {
+        Bytes::from(text).into()
+    }
+}
+
 impl Body {
-    pub(crate) fn new<B>(body: B) -> Self
+    /// Create a new Body that wraps another `http::body::Body`.
+    pub fn new<B>(body: B) -> Self
     where
         B: hyper::body::Body<Data = Bytes> + Send + 'static,
         B::Error: Into<GenericError>,
@@ -43,11 +58,23 @@ impl Body {
         Body(BoxBody::new(body.map_err(|err| err.into())))
     }
 
-    pub(crate) fn from_proto_message<T>(m: &T) -> Self
+    pub fn empty() -> Self {
+        Self::new(http_body_util::Empty::new())
+    }
+
+    pub(crate) fn protobuf<T>(message: &T) -> Self
     where
         T: prost::Message,
     {
-        serialize_proto_message(m).into()
+        serialize_proto_message(message).into()
+    }
+
+    pub(crate) fn json<T>(data: &T) -> Result<Self, serde_json::Error>
+    where
+        T: serde::Serialize,
+    {
+        let json = serde_json::to_string(&data)?;
+        Ok(json.into())
     }
 }
 

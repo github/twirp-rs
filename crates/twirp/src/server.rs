@@ -203,14 +203,13 @@ where
             BodyFormat::Pb => {
                 let response = Response::builder()
                     .header(header::CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-                    .body(Body::from_proto_message(&response))?;
+                    .body(Body::protobuf(&response))?;
                 Ok(response)
             }
             _ => {
-                let data = serde_json::to_string(&response)?;
                 let response = Response::builder()
                     .header(header::CONTENT_TYPE, CONTENT_TYPE_JSON)
-                    .body(Body::from(data))?;
+                    .body(Body::json(&response)?)?;
                 Ok(response)
             }
         },
@@ -314,7 +313,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_routes() {
-        let router = test_api_router().await;
+        let router = test_api_router();
         assert!(router
             .routes
             .contains_key(&(Method::POST, "/twirp/test.TestAPI/Ping".to_string())));
@@ -325,7 +324,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ping_success() {
-        let router = test_api_router().await;
+        let router = test_api_router();
         let resp = serve(router, gen_ping_request("hi")).await.unwrap();
         assert!(resp.status().is_success(), "{:?}", resp);
         let data: PingResponse = read_json_body(resp.into_body()).await;
@@ -334,7 +333,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ping_invalid_request() {
-        let router = test_api_router().await;
+        let router = test_api_router();
         let req = Request::post("/twirp/test.TestAPI/Ping")
             .body(Body::empty()) // not a valid request
             .unwrap();
@@ -355,7 +354,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_boom() {
-        let router = test_api_router().await;
+        let router = test_api_router();
         let req = serde_json::to_string(&PingRequest {
             name: "hi".to_string(),
         })
