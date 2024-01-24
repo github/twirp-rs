@@ -2,9 +2,13 @@ use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Response, Server};
-use twirp::{invalid_argument, GenericError, Router, TwirpErrorResponse};
+use hyper::body::Incoming;
+use hyper::server::conn::http1;
+use hyper::service::{service_fn, Service};
+use hyper::{Method, Request, Response};
+use hyper_util::rt::TokioIo;
+use tokio::net::TcpListener;
+use twirp::{invalid_argument, Body, GenericError, Router, TwirpErrorResponse};
 
 pub mod service {
     pub mod haberdash {
@@ -25,16 +29,37 @@ pub async fn main() {
     });
     println!("{router:?}");
     let router = Arc::new(router);
-    let service = make_service_fn(move |_| {
-        let router = router.clone();
-        async { Ok::<_, GenericError>(service_fn(move |req| twirp::serve(router.clone(), req))) }
+    let service = service_fn(move |req: Request<Incoming>| {
+        let router = Arc::clone(&router);
+        async move {
+            let req = req.map(Body::new);
+            twirp::serve(router, req).await
+        }
     });
 
-    let addr = ([127, 0, 0, 1], 3000).into();
-    let server = Server::bind(&addr).serve(service);
-    println!("Listening on {addr}");
-    if let Err(e) = server.await {
+    let tcp_listener = TcpListener::bind("localhost:3000").await.unwrap();
+    println!("Listening on localhost:3000");
+    if let Err(e) = serve_forever(tcp_listener, service).await {
         eprintln!("server error: {}", e);
+    }
+}
+
+async fn serve_forever<S>(tcp_listener: TcpListener, service: S) -> Result<(), std::io::Error>
+where
+    S: Clone + Service<Request<Incoming>, Response = Response<Body>> + Send + 'static,
+    S::Future: Send + 'static,
+    S::Error: Into<GenericError>,
+{
+    loop {
+        let (stream, _) = tcp_listener.accept().await?;
+        let io = TokioIo::new(stream);
+        let service = service.clone();
+        let task = async move {
+            if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
+                eprintln!("test server: error serving connection: {err:#}");
+            }
+        };
+        tokio::spawn(task);
     }
 }
 

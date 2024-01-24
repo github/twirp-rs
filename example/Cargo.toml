@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 twirp = { path = "../crates/twirp" }
 async-trait = "0.1"
-hyper = { version = "0.14", features = ["full"] }
+hyper = { version = "1.1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 prost = "0.12"
 prost-wkt = "0.5"
 prost-wkt-types = "0.5"
