@@ -7,52 +7,54 @@ use async_trait::async_trait;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
-use hyper::service::service_fn;
-use hyper::Request;
+use hyper::service::{service_fn, Service};
+use hyper::{Request, Response};
 use hyper_util::rt::TokioIo;
 use serde::de::DeserializeOwned;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
-use crate::{error, Body, Client, Result, Router, TwirpErrorResponse};
+use crate::{error, Body, Client, GenericError, Result, Router, TwirpErrorResponse};
 
-async fn test_server_handle_connection(io: TokioIo<TcpStream>, router: Arc<Router>) {
-    let service = service_fn(move |req: Request<Incoming>| {
-        let router = Arc::clone(&router);
-        async move {
-            let req = req.map(|body| Body::new(body));
-            crate::serve(router.clone(), req).await
-        }
-    });
-    if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
-        eprintln!("Error serving connection: {err:?}");
-    }
-}
-
-async fn test_server_main(
-    tcp_listener: TcpListener,
-    router: Arc<Router>,
-) -> Result<(), std::io::Error> {
+async fn test_server_main<S>(tcp_listener: TcpListener, service: S) -> Result<(), std::io::Error>
+where
+    S: Clone + Service<Request<Incoming>, Response = Response<Body>> + Send + 'static,
+    S::Future: Send + 'static,
+    S::Error: Into<GenericError>,
+{
     loop {
         let (stream, _) = tcp_listener.accept().await?;
         let io = TokioIo::new(stream);
-        let router = Arc::clone(&router);
-        tokio::spawn(test_server_handle_connection(io, router));
+        let service = service.clone();
+        let task = async move {
+            if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
+                eprintln!("test server: error serving connection: {err:#}");
+            }
+        };
+        tokio::spawn(task);
     }
 }
 
 pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), std::io::Error>> {
-    let router = test_api_router().await;
+    let router = test_api_router();
+    let service = service_fn(move |req: Request<Incoming>| {
+        let router = Arc::clone(&router);
+        async move {
+            let req = req.map(Body::new);
+            crate::serve(router, req).await
+        }
+    });
+
     let addr: SocketAddr = ([127, 0, 0, 1], port).into();
     let tcp_listener = TcpListener::bind(&addr).await.unwrap();
-    let server = test_server_main(tcp_listener, router);
+    let server = test_server_main(tcp_listener, service);
     println!("Listening on {addr}");
     let h = tokio::spawn(server);
     tokio::time::sleep(Duration::from_millis(100)).await;
     h
 }
 
-pub async fn test_api_router() -> Arc<Router> {
+pub fn test_api_router() -> Arc<Router> {
     let api = Arc::new(TestAPIServer {});
     let mut router = Router::default();
     // NB: This would be generated
