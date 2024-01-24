@@ -6,15 +6,18 @@ use bytes::Bytes;
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
-use pin_project::pin_project;
 
 use crate::GenericError;
 
 type BoxBody = UnsyncBoxBody<Bytes, GenericError>;
 
-/// Generic body type (like `axum::body::Body`).
-#[pin_project]
-pub struct Body(#[pin] BoxBody);
+pin_project_lite::pin_project! {
+    /// Generic body type (like `axum::body::Body`).
+    pub struct Body {
+        #[pin]
+        inner: BoxBody
+    }
+}
 
 impl Debug for Body {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -24,9 +27,9 @@ impl Debug for Body {
 
 impl From<Bytes> for Body {
     fn from(bytes: Bytes) -> Self {
-        Body(BoxBody::new(
-            http_body_util::Full::new(bytes).map_err(|err| match err {}),
-        ))
+        Body {
+            inner: BoxBody::new(http_body_util::Full::new(bytes).map_err(|err| match err {})),
+        }
     }
 }
 
@@ -55,7 +58,9 @@ impl Body {
         B: hyper::body::Body<Data = Bytes> + Send + 'static,
         B::Error: Into<GenericError>,
     {
-        Body(BoxBody::new(body.map_err(|err| err.into())))
+        Body {
+            inner: BoxBody::new(body.map_err(|err| err.into())),
+        }
     }
 
     pub fn empty() -> Self {
@@ -102,6 +107,6 @@ impl hyper::body::Body for Body {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
-        self.project().0.poll_frame(cx)
+        self.project().inner.poll_frame(cx)
     }
 }
