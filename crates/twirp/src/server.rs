@@ -3,13 +3,14 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use futures::Future;
-use hyper::{header, Body, Method, Request, Response};
+use http_body_util::BodyExt;
+use hyper::{header, Method, Request, Response};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::time::{Duration, Instant};
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
-use crate::{error, to_proto_body, GenericError, TwirpErrorResponse};
+use crate::{error, Body, GenericError, TwirpErrorResponse};
 
 /// A function that handles a request and returns a response.
 type HandlerFn = Box<dyn Fn(Request<Body>) -> HandlerResponse + Send + Sync>;
@@ -180,7 +181,7 @@ where
     T: prost::Message + Default + DeserializeOwned,
 {
     let format = BodyFormat::from_content_type(&req);
-    let bytes = hyper::body::to_bytes(req.into_body()).await?;
+    let bytes = req.into_body().collect().await?.to_bytes();
     timings.set_received();
     let request = match format {
         BodyFormat::Pb => T::decode(bytes)?,
@@ -202,7 +203,7 @@ where
             BodyFormat::Pb => {
                 let response = Response::builder()
                     .header(header::CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-                    .body(to_proto_body(response))?;
+                    .body(Body::from_proto_message(&response))?;
                 Ok(response)
             }
             _ => {

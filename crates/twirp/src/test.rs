@@ -1,24 +1,51 @@
 //! Test helpers and mini twirp api server implementation.
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Request, Server};
+use http_body_util::BodyExt;
+use hyper::body::Incoming;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::Request;
+use hyper_util::rt::TokioIo;
 use serde::de::DeserializeOwned;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
-use crate::{error, Client, GenericError, Result, Router, TwirpErrorResponse};
+use crate::{error, Body, Client, Result, Router, TwirpErrorResponse};
 
-pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), hyper::Error>> {
-    let router = test_api_router().await;
-    let service = make_service_fn(move |_| {
-        let router = router.clone();
-        async { Ok::<_, GenericError>(service_fn(move |req| crate::serve(router.clone(), req))) }
+async fn test_server_handle_connection(io: TokioIo<TcpStream>, router: Arc<Router>) {
+    let service = service_fn(move |req: Request<Incoming>| {
+        let router = Arc::clone(&router);
+        async move {
+            let req = req.map(|body| Body::new(body));
+            crate::serve(router.clone(), req).await
+        }
     });
+    if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
+        eprintln!("Error serving connection: {err:?}");
+    }
+}
 
-    let addr = ([127, 0, 0, 1], port).into();
-    let server = Server::bind(&addr).serve(service);
+async fn test_server_main(
+    tcp_listener: TcpListener,
+    router: Arc<Router>,
+) -> Result<(), std::io::Error> {
+    loop {
+        let (stream, _) = tcp_listener.accept().await?;
+        let io = TokioIo::new(stream);
+        let router = Arc::clone(&router);
+        tokio::spawn(test_server_handle_connection(io, router));
+    }
+}
+
+pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), std::io::Error>> {
+    let router = test_api_router().await;
+    let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+    let tcp_listener = TcpListener::bind(&addr).await.unwrap();
+    let server = test_server_main(tcp_listener, router);
     println!("Listening on {addr}");
     let h = tokio::spawn(server);
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -45,7 +72,7 @@ pub async fn test_api_router() -> Arc<Router> {
     Arc::new(router)
 }
 
-pub fn gen_ping_request(name: &str) -> Request<hyper::Body> {
+pub fn gen_ping_request(name: &str) -> Request<Body> {
     let req = serde_json::to_string(&PingRequest {
         name: name.to_string(),
     })
@@ -56,9 +83,11 @@ pub fn gen_ping_request(name: &str) -> Request<hyper::Body> {
 }
 
 pub async fn read_string_body(body: Body) -> String {
-    let data = hyper::body::to_bytes(body)
+    let data = body
+        .collect()
         .await
         .expect("invalid body")
+        .to_bytes()
         .to_vec();
     String::from_utf8(data).expect("non-utf8 body")
 }
@@ -67,10 +96,7 @@ pub async fn read_json_body<T>(body: Body) -> T
 where
     T: DeserializeOwned,
 {
-    let data = hyper::body::to_bytes(body)
-        .await
-        .expect("invalid body")
-        .to_vec();
+    let data = body.collect().await.expect("invalid body").to_bytes();
     serde_json::from_slice(&data).expect("twirp response isn't valid JSON")
 }
 

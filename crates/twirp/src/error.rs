@@ -2,11 +2,13 @@
 
 use std::collections::HashMap;
 
-use hyper::{header, Body, Response, StatusCode};
+use hyper::{header, Response, StatusCode};
 use serde::{Deserialize, Serialize, Serializer};
 
+use crate::Body;
+
 // Alias for a generic error
-pub type GenericError = Box<dyn std::error::Error + Send + Sync>;
+pub type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 macro_rules! twirp_error_codes {
     (

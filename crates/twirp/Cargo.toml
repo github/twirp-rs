@@ -22,7 +22,11 @@ reqwest = { version = "0.11", features = ["default", "gzip", "json"], optional =
 url = { version = "2.5", optional = true }
 
 # For the server feature
-hyper = { version = "0.14", features = ["full"], optional = true }
+bytes = "1.5"
+http-body-util = "0.1"
+hyper = { version = "1.1", features = ["full"], optional = true }
+hyper-util = { version = "0.1", features = ["tokio"] }
+pin-project = "1.1"
 
 # For the test-support feature
 async-trait = { version = "0.1", optional = true }
