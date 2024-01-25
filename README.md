@@ -28,7 +28,7 @@ Add the `twirp-build` crate as a build dependency in your `Cargo.toml` (you'll n
 ```toml
 # Cargo.toml
 [build-dependencies]
-twirp-build = "0.1"
+twirp-build = "0.2"
 prost-build = "0.12"
 ```
 
@@ -58,22 +58,22 @@ Include the generated code, create a router, register your service, and then ser
 mod haberdash {
     include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
 }
-use haberdash
+
+use haberdash::{MakeHatRequest, MakeHatResponse};
 
 #[tokio::main]
 pub async fn main() {
-    let mut router = Router::default();
-    let server = Arc::new(HaberdasherAPIServer {});
-    haberdash::add_service(&mut router, server.clone());
-    let router = Arc::new(router);
-    let service = make_service_fn(move |_| {
-        let router = router.clone();
-        async { Ok::<_, GenericError>(service_fn(move |req| twirp::serve(router.clone(), req))) }
-    });
+    let api_impl = Arc::new(HaberdasherAPIServer {});
+    let twirp_routes = Router::new()
+        .nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
+    let app = Router::new()
+        .nest("/twirp", twirp_routes)
+        .fallback(twirp::server::not_found_handler);
 
-    let addr = ([127, 0, 0, 1], 3000).into();
-    let server = Server::bind(&addr).serve(service);
-    server.await.expect("server error")
+    let tcp_listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    if let Err(e) = axum::serve(tcp_listener, app).await {
+        eprintln!("server error: {}", e);
+    }
 }
 
 // Define the server and implement the trait.

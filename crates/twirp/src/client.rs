@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use hyper::header::{InvalidHeaderValue, CONTENT_TYPE};
-use hyper::StatusCode;
+use reqwest::header::{InvalidHeaderValue, CONTENT_TYPE};
+use reqwest::StatusCode;
 use thiserror::Error;
 use url::Url;
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
-use crate::{to_proto_body, TwirpErrorResponse};
+use crate::{serialize_proto_message, TwirpErrorResponse};
 
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -146,7 +146,7 @@ impl Client {
             .http_client
             .post(url)
             .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-            .body(to_proto_body(body))
+            .body(serialize_proto_message(body))
             .build()?;
 
         // Create and execute the middleware handlers

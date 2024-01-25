@@ -1,6 +1,6 @@
 [package]
 name = "twirp"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["The blackbird team <support@github.com>"]
 edition = "2021"
 
@@ -22,7 +22,12 @@ reqwest = { version = "0.11", features = ["default", "gzip", "json"], optional =
 url = { version = "2.5", optional = true }
 
 # For the server feature
-hyper = { version = "0.14", features = ["full"], optional = true }
+axum = "0.7"
+bytes = "1.5"
+http = "1.0"
+http-body-util = "0.1"
+hyper = { version = "1.1", features = ["full"], optional = true }
+tower = "0.4"
 
 # For the test-support feature
 async-trait = { version = "0.1", optional = true }

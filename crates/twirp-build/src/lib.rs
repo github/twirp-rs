@@ -19,6 +19,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let service_fqn = format!("{}.{}", service.package, service_name);
         writeln!(buf).unwrap();
 
+        writeln!(buf, "pub const SERVICE_FQN: &str = \"{service_fqn}\";").unwrap();
+
         //
         // generate the twirp server
         //
@@ -37,32 +39,44 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         // add_service
         writeln!(
             buf,
-            r#"pub fn add_service<T>(router: &mut twirp::Router, api: std::sync::Arc<T>)
+            r#"pub fn router<T>(api: std::sync::Arc<T>) -> twirp::Router
 where
-    T: {} + Send + Sync + 'static,
-{{"#,
-            service_name
+    T: {service_name} + Send + Sync + 'static,
+{{
+    twirp::Router::new()"#,
         )
         .unwrap();
         for m in &service.methods {
+            let uri = &m.proto_name;
+            let rust_method_name = &m.name;
             writeln!(
                 buf,
-                r#"    {{
-        #[allow(clippy::redundant_clone)]
-        let api = api.clone();
-        router.add_method(
-            "{}/{}",
-            move |req| {{
-                let api = api.clone();
-                async move {{ api.{}(req).await }}
-            }},
-        );
-    }}"#,
-                service_fqn, m.proto_name, m.name
+                r#"        .route(
+            "/{uri}",
+            twirp::details::post(
+                |twirp::details::State(api): twirp::details::State<std::sync::Arc<T>>,
+                 req: twirp::details::Request| async move {{
+                    twirp::server::handle_request(
+                        req,
+                        move |req| async move {{
+                            api.{rust_method_name}(req).await
+                        }},
+                    )
+                    .await
+                }},
+            ),
+        )"#,
             )
             .unwrap();
         }
-        writeln!(buf, "}}").unwrap();
+        writeln!(
+            buf,
+            r#"
+        .with_state(api)
+        .fallback(twirp::server::not_found_handler)
+}}"#
+        )
+        .unwrap();
 
         //
         // generate the twirp client
