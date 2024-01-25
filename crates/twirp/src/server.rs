@@ -51,10 +51,11 @@ where
     Req: prost::Message + Default + serde::de::DeserializeOwned,
     Resp: prost::Message + serde::Serialize,
 {
-    let mut timings = *req
+    let mut timings = req
         .extensions()
         .get::<Timings>()
-        .expect("invariant violated: timing info not present in request");
+        .map(|t| *t)
+        .unwrap_or_default();
 
     let (req, resp_fmt) = match parse_request(req, &mut timings).await {
         Ok(pair) => pair,
@@ -163,6 +164,12 @@ pub struct Timings {
     pub response_handled: Option<Instant>,
     // When the response was written.
     pub response_written: Option<Instant>,
+}
+
+impl Default for Timings {
+    fn default() -> Self {
+        Timings::new(Instant::now())
+    }
 }
 
 impl Timings {
