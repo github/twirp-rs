@@ -43,7 +43,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 where
     T: {service_name} + Send + Sync + 'static,
 {{
-    twirp::Router::new()"#,
+    twirp::details::TwirpRouterBuilder::new(api)"#,
         )
         .unwrap();
         for m in &service.methods {
@@ -51,29 +51,16 @@ where
             let rust_method_name = &m.name;
             writeln!(
                 buf,
-                r#"        .route(
-            "/{uri}",
-            twirp::details::post(
-                |twirp::details::State(api): twirp::details::State<std::sync::Arc<T>>,
-                 req: twirp::details::Request| async move {{
-                    twirp::server::handle_request(
-                        req,
-                        move |req| async move {{
-                            api.{rust_method_name}(req).await
-                        }},
-                    )
-                    .await
-                }},
-            ),
-        )"#,
+                r#"        .route("/{uri}", |api: std::sync::Arc<T>| move |req| async move {{
+            api.{rust_method_name}(req).await
+        }})"#,
             )
             .unwrap();
         }
         writeln!(
             buf,
             r#"
-        .with_state(api)
-        .fallback(twirp::server::not_found_handler)
+        .build()
 }}"#
         )
         .unwrap();
