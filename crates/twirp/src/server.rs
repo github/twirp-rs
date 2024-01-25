@@ -100,10 +100,11 @@ impl Router {
         > {
             let f = f.clone();
             Box::new(Box::pin(async move {
-                let mut timings = *req
+                let mut timings = req
                     .extensions()
                     .get::<Timings>()
-                    .expect("invariant violated: timing info not present in request");
+                    .copied()
+                    .unwrap_or_else(|| Timings::new(Instant::now()));
                 match parse_request(req, &mut timings).await {
                     Ok((req, resp_fmt)) => {
                         let res = f(req).await;
