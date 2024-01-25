@@ -152,10 +152,13 @@ pub async fn not_found_handler() -> Response<Body> {
 /// Contains timing information associated with a request.
 /// To access the timings in a given request, use the [extensions](Request::extensions)
 /// method and specialize to `Timings` appropriately.
-#[derive(Debug, Clone, Copy)]
+/// Because `Router` cannot know exactly when a given HTTP request
+/// started, you should insert a new Timings struct at the start
+/// of your request.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Timings {
     // When the request started.
-    pub start: Instant,
+    pub start: Option<Instant>,
     // When the request was received (headers and body).
     pub request_received: Option<Instant>,
     // When the request body was parsed.
@@ -166,17 +169,11 @@ pub struct Timings {
     pub response_written: Option<Instant>,
 }
 
-impl Default for Timings {
-    fn default() -> Self {
-        Timings::new(Instant::now())
-    }
-}
-
 impl Timings {
     #[allow(clippy::new_without_default)]
     pub fn new(start: Instant) -> Self {
         Self {
-            start,
+            start: Some(start),
             request_received: None,
             request_parsed: None,
             response_handled: None,
@@ -201,7 +198,10 @@ impl Timings {
     }
 
     pub fn received(&self) -> Option<Duration> {
-        self.request_received.map(|x| x - self.start)
+        match (self.start, self.request_received) {
+            (Some(start), Some(received)) => Some(received - start),
+            _ => None,
+        }
     }
 
     pub fn parsed(&self) -> Option<Duration> {
