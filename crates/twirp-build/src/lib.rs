@@ -19,7 +19,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let service_fqn = format!("{}.{}", service.package, service_name);
         writeln!(buf).unwrap();
 
-        writeln!(buf, "pub const SERVICE_FQN: &str = \"{service_fqn}\";").unwrap();
+        writeln!(buf, "pub const SERVICE_FQN: &str = \"/{service_fqn}\";").unwrap();
 
         //
         // generate the twirp server
@@ -43,37 +43,25 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 where
     T: {service_name} + Send + Sync + 'static,
 {{
-    twirp::Router::new()"#,
+    twirp::details::TwirpRouterBuilder::new(api)"#,
         )
         .unwrap();
         for m in &service.methods {
             let uri = &m.proto_name;
+            let req_type = &m.input_type;
             let rust_method_name = &m.name;
             writeln!(
                 buf,
-                r#"        .route(
-            "/{uri}",
-            twirp::details::post(
-                |twirp::details::State(api): twirp::details::State<std::sync::Arc<T>>,
-                 req: twirp::details::Request| async move {{
-                    twirp::server::handle_request(
-                        req,
-                        move |req| async move {{
-                            api.{rust_method_name}(req).await
-                        }},
-                    )
-                    .await
-                }},
-            ),
-        )"#,
+                r#"        .route("/{uri}", |api: std::sync::Arc<T>, req: {req_type}| async move {{
+            api.{rust_method_name}(req).await
+        }})"#,
             )
             .unwrap();
         }
         writeln!(
             buf,
             r#"
-        .with_state(api)
-        .fallback(twirp::server::not_found_handler)
+        .build()
 }}"#
         )
         .unwrap();

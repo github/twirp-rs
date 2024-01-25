@@ -8,17 +8,23 @@ pub mod server;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
 
+#[doc(hidden)]
 pub mod details;
 
 pub use client::{Client, ClientBuilder, ClientError, Middleware, Next, Result};
 pub use error::*; // many constructors like `invalid_argument()`
-pub use server::{Router, Timings};
 
-// Re-export `reqwest` so that it's easy to implement middleware.
+// Re-export this crate's dependencies that users are likely to code against. These can be used to
+// import the exact versions of these libraries `twirp` is built with -- useful if your project is
+// so sprawling that it builds multiple versions of some crates.
+pub use axum;
 pub use reqwest;
-
-// Re-export `url so that the generated code works without additional dependencies beyond just the `twirp` crate.
+pub use tower;
 pub use url;
+
+/// Re-export of `axum::Router`, the type that encapsulates a server-side implementation of a Twirp
+/// service.
+pub use axum::Router;
 
 pub(crate) fn serialize_proto_message<T>(m: T) -> Vec<u8>
 where

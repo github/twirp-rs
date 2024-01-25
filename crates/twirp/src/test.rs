@@ -11,6 +11,7 @@ use serde::de::DeserializeOwned;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
+use crate::details::TwirpRouterBuilder;
 use crate::server::Timings;
 use crate::{error, Client, Result, TwirpErrorResponse};
 
@@ -28,35 +29,16 @@ pub fn test_api_router() -> Router {
     let api = Arc::new(TestAPIServer {});
 
     // NB: This part would be generated
-    let test_router = crate::Router::new()
+    let test_router = TwirpRouterBuilder::new(api)
         .route(
             "/Ping",
-            crate::details::post(
-                |crate::details::State(api): crate::details::State<Arc<TestAPIServer>>,
-                 req: crate::details::Request| async move {
-                    crate::server::handle_request(
-                        req,
-                        move |req| async move { api.ping(req).await },
-                    )
-                    .await
-                },
-            ),
+            |api: Arc<TestAPIServer>, req: PingRequest| async move { api.ping(req).await },
         )
         .route(
             "/Boom",
-            crate::details::post(
-                |crate::details::State(api): crate::details::State<Arc<TestAPIServer>>,
-                 req: crate::details::Request| async move {
-                    crate::server::handle_request(
-                        req,
-                        move |req| async move { api.boom(req).await },
-                    )
-                    .await
-                },
-            ),
+            |api: Arc<TestAPIServer>, req: PingRequest| async move { api.boom(req).await },
         )
-        .fallback(crate::server::not_found_handler)
-        .with_state(api);
+        .build();
 
     axum::Router::new()
         .nest("/twirp/test.TestAPI", test_router)
