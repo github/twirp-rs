@@ -19,7 +19,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let service_fqn = format!("{}.{}", service.package, service_name);
         writeln!(buf).unwrap();
 
-        writeln!(buf, "pub const SERVICE_FQN: &str = \"{service_fqn}\";").unwrap();
+        writeln!(buf, "pub const SERVICE_FQN: &str = \"/{service_fqn}\";").unwrap();
 
         //
         // generate the twirp server
@@ -48,10 +48,11 @@ where
         .unwrap();
         for m in &service.methods {
             let uri = &m.proto_name;
+            let req_type = &m.input_type;
             let rust_method_name = &m.name;
             writeln!(
                 buf,
-                r#"        .route("/{uri}", |api: std::sync::Arc<T>| move |req| async move {{
+                r#"        .route("/{uri}", |api: std::sync::Arc<T>, req: {req_type}| async move {{
             api.{rust_method_name}(req).await
         }})"#,
             )

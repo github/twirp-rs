@@ -30,12 +30,14 @@ pub fn test_api_router() -> Router {
 
     // NB: This part would be generated
     let test_router = TwirpRouterBuilder::new(api)
-        .route("/Ping", |api: Arc<TestAPIServer>| {
-            move |req| async move { api.ping(req).await }
-        })
-        .route("/Boom", |api: Arc<TestAPIServer>| {
-            move |req| async move { api.boom(req).await }
-        })
+        .route(
+            "/Ping",
+            |api: Arc<TestAPIServer>, req: PingRequest| async move { api.ping(req).await },
+        )
+        .route(
+            "/Boom",
+            |api: Arc<TestAPIServer>, req: PingRequest| async move { api.boom(req).await },
+        )
         .build();
 
     axum::Router::new()

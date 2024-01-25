@@ -59,6 +59,7 @@ mod haberdash {
     include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
 }
 
+use axum::Router;
 use haberdash::{MakeHatRequest, MakeHatResponse};
 
 #[tokio::main]
@@ -86,6 +87,10 @@ impl haberdash::HaberdasherAPI for HaberdasherAPIServer {
     }
 }
 ```
+
+This code creates an `axum::Router`, then hands it off to `axum::serve()` to handle networking.
+This use of `axum::serve` is optional. After building `app`, you can instead invoke it from any
+`hyper`-based server by importing `twirp::tower::Service` and doing `app.call(request).await`.
 
 ## Usage (client side)
 
