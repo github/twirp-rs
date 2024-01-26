@@ -3,6 +3,12 @@ name = "twirp"
 version = "0.1.0"
 authors = ["The blackbird team <support@github.com>"]
 edition = "2021"
+license = "MIT"
+description = "An async-compatible library for Twirp RPC in Rust."
+readme = "README.md"
+keywords = ["twirp"]
+categories = ["network-programming"]
+repository = "https://github.com/github/twirp-rs"
 
 [features]
 default = ["client", "server", "test-support"]
