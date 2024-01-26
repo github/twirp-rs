@@ -6,6 +6,8 @@ The [canonical implementation](https://github.com/twitchtv/twirp) is in Go, this
 
 Unlike [`prost-twirp`](https://github.com/sourcefrog/prost-twirp), the generated traits for serving and accessing RPCs are implemented atop `async` functions. Because traits containing `async` functions [are not directly supported](https://smallcultfollowing.com/babysteps/blog/2019/10/26/async-fn-in-traits-are-hard/) in Rust versions prior to 1.75, this crate uses the [`async_trait`](https://github.com/dtolnay/async-trait) macro to encapsulate the scaffolding required to make them work.
 
+Versions of this package beginning with `0.1` are compatible with `hyper` 0.14. Versions beginning with `0.2` require `hyper` 1.1.
+
 ## Usage
 
 See the [example](./example) for a complete example project.
