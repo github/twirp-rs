@@ -3,6 +3,11 @@ name = "twirp-build"
 version = "0.2.0"
 authors = ["The blackbird team <support@github.com>"]
 edition = "2021"
+description = "Code generation for async-compatible Twirp RPC interfaces."
+readme = "README.md"
+keywords = ["twirp"]
+categories = ["network-programming"]
+repository = "https://github.com/github/twirp-rs"
 
 [dependencies]
 prost-build = "0.12"
