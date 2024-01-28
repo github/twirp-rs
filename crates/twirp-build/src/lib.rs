@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::fmt::Write;
 
 /// Generates twirp services for protobuf rpc service definitions.
