@@ -15,7 +15,7 @@ pub struct ServiceGenerator;
 
 impl prost_build::ServiceGenerator for ServiceGenerator {
     fn generate(&mut self, service: prost_build::Service, buf: &mut String) {
-        let service_name = service.name.replace("Api", "API");
+        let service_name = service.name;
         let service_fqn = format!("{}.{}", service.package, service_name);
         writeln!(buf).unwrap();
 
