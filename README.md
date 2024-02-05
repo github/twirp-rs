@@ -16,7 +16,7 @@ Define services and messages in a `.proto` file:
 // service.proto
 package service.haberdash.v1;
 
-service HaberdasherAPI {
+service HaberdasherApi {
    rpc MakeHat(MakeHatRequest) returns (MakeHatResponse);
 }
 message MakeHatRequest { }
@@ -64,7 +64,7 @@ use haberdash::{MakeHatRequest, MakeHatResponse};
 
 #[tokio::main]
 pub async fn main() {
-    let api_impl = Arc::new(HaberdasherAPIServer {});
+    let api_impl = Arc::new(HaberdasherApiServer {});
     let twirp_routes = Router::new()
         .nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
     let app = Router::new()
@@ -78,10 +78,10 @@ pub async fn main() {
 }
 
 // Define the server and implement the trait.
-struct HaberdasherAPIServer;
+struct HaberdasherApiServer;
 
 #[async_trait]
-impl haberdash::HaberdasherAPI for HaberdasherAPIServer {
+impl haberdash::HaberdasherApi for HaberdasherApiServer {
     async fn make_hat(&self, req: MakeHatRequest) -> Result<MakeHatResponse, TwirpErrorResponse> {
         todo!()
     }
@@ -101,7 +101,7 @@ mod haberdash {
     include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
 }
 
-use haberdash::{HaberdasherAPIClient, MakeHatRequest, MakeHatResponse};
+use haberdash::{HaberdasherApiClient, MakeHatRequest, MakeHatResponse};
 
 #[tokio::main]
 pub async fn main() {

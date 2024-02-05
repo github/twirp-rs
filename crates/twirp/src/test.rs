@@ -26,17 +26,17 @@ pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), std::io::Error>
 }
 
 pub fn test_api_router() -> Router {
-    let api = Arc::new(TestAPIServer {});
+    let api = Arc::new(TestApiServer {});
 
     // NB: This part would be generated
     let test_router = TwirpRouterBuilder::new(api)
         .route(
             "/Ping",
-            |api: Arc<TestAPIServer>, req: PingRequest| async move { api.ping(req).await },
+            |api: Arc<TestApiServer>, req: PingRequest| async move { api.ping(req).await },
         )
         .route(
             "/Boom",
-            |api: Arc<TestAPIServer>, req: PingRequest| async move { api.boom(req).await },
+            |api: Arc<TestApiServer>, req: PingRequest| async move { api.boom(req).await },
         )
         .build();
 
@@ -75,10 +75,10 @@ pub async fn read_err_body(body: Body) -> TwirpErrorResponse {
 
 // Hand written sample test server and client
 
-pub struct TestAPIServer;
+pub struct TestApiServer;
 
 #[async_trait]
-impl TestAPI for TestAPIServer {
+impl TestApi for TestApiServer {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpErrorResponse> {
         Ok(PingResponse { name: req.name })
     }
@@ -90,13 +90,13 @@ impl TestAPI for TestAPIServer {
 
 // Small test twirp services (this would usually be generated with twirp-build)
 #[async_trait]
-pub trait TestAPIClient {
+pub trait TestApiClient {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse>;
     async fn boom(&self, req: PingRequest) -> Result<PingResponse>;
 }
 
 #[async_trait]
-impl TestAPIClient for Client {
+impl TestApiClient for Client {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse> {
         let url = self.base_url.join("test.TestAPI/Ping")?;
         self.request(url, req).await
@@ -108,7 +108,7 @@ impl TestAPIClient for Client {
 }
 
 #[async_trait]
-pub trait TestAPI {
+pub trait TestApi {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse, TwirpErrorResponse>;
     async fn boom(&self, req: PingRequest) -> Result<PingResponse, TwirpErrorResponse>;
 }

@@ -12,12 +12,12 @@ pub mod service {
     }
 }
 
-use service::haberdash::v1::{HaberdasherAPIClient, MakeHatRequest, MakeHatResponse};
+use service::haberdash::v1::{HaberdasherApiClient, MakeHatRequest, MakeHatResponse};
 
 #[tokio::main]
 pub async fn main() -> Result<(), GenericError> {
     // basic client
-    use service::haberdash::v1::HaberdasherAPIClient;
+    use service::haberdash::v1::HaberdasherApiClient;
     let client = Client::from_base_url(Url::parse("http://localhost:3000/twirp/")?)?;
     let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
     eprintln!("{:?}", resp);
@@ -70,10 +70,10 @@ impl Middleware for RequestHeaders {
 }
 
 #[derive(Debug)]
-struct MockHaberdasherAPIClient;
+struct MockHaberdasherApiClient;
 
 #[async_trait]
-impl HaberdasherAPIClient for MockHaberdasherAPIClient {
+impl HaberdasherApiClient for MockHaberdasherApiClient {
     async fn make_hat(
         &self,
         _req: MakeHatRequest,
