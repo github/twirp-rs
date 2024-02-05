@@ -16,7 +16,7 @@ Define services and messages in a `.proto` file:
 // service.proto
 package service.haberdash.v1;
 
-service HaberdasherApi {
+service HaberdasherAPI {
    rpc MakeHat(MakeHatRequest) returns (MakeHatResponse);
 }
 message MakeHatRequest { }
