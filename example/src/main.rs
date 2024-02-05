@@ -21,7 +21,7 @@ async fn ping() -> &'static str {
 
 #[tokio::main]
 pub async fn main() {
-    let api_impl = Arc::new(HaberdasherAPIServer {});
+    let api_impl = Arc::new(HaberdasherApiServer {});
     let twirp_routes = Router::new().nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
     let app = Router::new()
         .nest("/twirp", twirp_routes)
@@ -38,10 +38,10 @@ pub async fn main() {
     }
 }
 
-struct HaberdasherAPIServer;
+struct HaberdasherApiServer;
 
 #[async_trait]
-impl haberdash::HaberdasherAPI for HaberdasherAPIServer {
+impl haberdash::HaberdasherApi for HaberdasherApiServer {
     async fn make_hat(&self, req: MakeHatRequest) -> Result<MakeHatResponse, TwirpErrorResponse> {
         if req.inches == 0 {
             return Err(invalid_argument("inches"));
@@ -65,18 +65,18 @@ impl haberdash::HaberdasherAPI for HaberdasherAPIServer {
 
 #[cfg(test)]
 mod test {
-    use service::haberdash::v1::HaberdasherAPIClient;
+    use service::haberdash::v1::HaberdasherApiClient;
     use twirp::client::Client;
     use twirp::url::Url;
     use twirp::TwirpErrorCode;
 
-    use crate::service::haberdash::v1::HaberdasherAPI;
+    use crate::service::haberdash::v1::HaberdasherApi;
 
     use super::*;
 
     #[tokio::test]
     async fn success() {
-        let api = HaberdasherAPIServer {};
+        let api = HaberdasherApiServer {};
         let res = api.make_hat(MakeHatRequest { inches: 1 }).await;
         assert!(res.is_ok());
         let res = res.unwrap();
@@ -85,7 +85,7 @@ mod test {
 
     #[tokio::test]
     async fn invalid_request() {
-        let api = HaberdasherAPIServer {};
+        let api = HaberdasherApiServer {};
         let res = api.make_hat(MakeHatRequest { inches: 0 }).await;
         assert!(res.is_err());
         let err = res.unwrap_err();
@@ -100,7 +100,7 @@ mod test {
     }
 
     impl NetServer {
-        async fn start(api_impl: Arc<HaberdasherAPIServer>) -> Self {
+        async fn start(api_impl: Arc<HaberdasherApiServer>) -> Self {
             let twirp_routes =
                 Router::new().nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
             let app = Router::new()
@@ -143,7 +143,7 @@ mod test {
 
     #[tokio::test]
     async fn test_net() {
-        let api_impl = Arc::new(HaberdasherAPIServer {});
+        let api_impl = Arc::new(HaberdasherApiServer {});
         let server = NetServer::start(api_impl).await;
 
         let url = Url::parse(&format!("http://localhost:{}/twirp/", server.port)).unwrap();

@@ -9,7 +9,7 @@ use crate::{server, TwirpErrorResponse};
 
 /// Builder object used by generated code to build a Twirp service.
 ///
-/// The type `S` is something like `Arc<MyExampleAPIServer>`, which can be cheaply cloned for each
+/// The type `S` is something like `Arc<MyExampleApiServer>`, which can be cheaply cloned for each
 /// incoming request, providing access to the Rust value that actually implements the RPCs.
 pub struct TwirpRouterBuilder<S> {
     service: S,
@@ -30,7 +30,7 @@ where
     /// Add a handler for an `rpc` to the router.
     ///
     /// The generated code passes a closure that calls the method, like
-    /// `|api: Arc<HaberdasherAPIServer>, req: MakeHatRequest| async move { api.make_hat(req) }`.
+    /// `|api: Arc<HaberdasherApiServer>, req: MakeHatRequest| async move { api.make_hat(req) }`.
     pub fn route<F, Fut, Req, Res>(self, url: &str, f: F) -> Self
     where
         F: Fn(S, Req) -> Fut + Clone + Sync + Send + 'static,
