@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+use twirp::async_trait::async_trait;
 use twirp::client::{Client, ClientBuilder, Middleware, Next};
 use twirp::reqwest::{Request, Response};
 use twirp::url::Url;
@@ -25,7 +25,7 @@ pub async fn main() -> Result<(), GenericError> {
     // customize the client with middleware
     let client = ClientBuilder::new(
         Url::parse("http://xyz:3000/twirp/")?,
-        reqwest::Client::default(),
+        twirp::reqwest::Client::default(),
     )
     .with(RequestHeaders { hmac_key: None })
     .build()?;

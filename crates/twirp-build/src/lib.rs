@@ -24,7 +24,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         //
         // generate the twirp server
         //
-        writeln!(buf, "#[async_trait::async_trait]").unwrap();
+        writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
         writeln!(buf, "pub trait {} {{", service_name).unwrap();
         for m in &service.methods {
             writeln!(
@@ -70,7 +70,7 @@ where
         // generate the twirp client
         //
         writeln!(buf).unwrap();
-        writeln!(buf, "#[async_trait::async_trait]").unwrap();
+        writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
         writeln!(
             buf,
             "pub trait {service_name}Client: Send + Sync + std::fmt::Debug {{",
@@ -88,7 +88,7 @@ where
         writeln!(buf, "}}").unwrap();
 
         // Implement the rpc traits for: `twirp::client::Client`
-        writeln!(buf, "#[async_trait::async_trait]").unwrap();
+        writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
         writeln!(
             buf,
             "impl {service_name}Client for twirp::client::Client {{",

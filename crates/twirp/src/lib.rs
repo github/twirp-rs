@@ -1,6 +1,4 @@
-#[cfg(feature = "client")]
 pub mod client;
-
 pub mod error;
 pub mod headers;
 pub mod server;
@@ -17,6 +15,7 @@ pub use error::*; // many constructors like `invalid_argument()`
 // Re-export this crate's dependencies that users are likely to code against. These can be used to
 // import the exact versions of these libraries `twirp` is built with -- useful if your project is
 // so sprawling that it builds multiple versions of some crates.
+pub use async_trait;
 pub use axum;
 pub use reqwest;
 pub use tower;

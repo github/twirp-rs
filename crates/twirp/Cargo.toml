@@ -10,30 +10,21 @@ categories = ["network-programming"]
 repository = "https://github.com/github/twirp-rs"
 
 [features]
-default = ["client", "server", "test-support"]
-test-support = ["dep:async-trait", "dep:tokio"]
-client = ["dep:reqwest", "dep:url"]
-server = ["dep:axum", "dep:hyper", "dep:tower"]
+test-support = []
 
 [dependencies]
+async-trait = "0.1"
+axum = "0.7"
+bytes = "1.5"
 futures = "0.3"
+http = "1.0"
+http-body-util = "0.1"
+hyper = { version = "1.1", default-features = false }
 prost = "0.12"
+reqwest = { version = "0.11", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
-
-# For the client feature
-reqwest = { version = "0.11", default-features = false, optional = true }
-url = { version = "2.5", optional = true }
-
-# For the server feature
-axum = { version = "0.7", default-features = false, optional = true }
-bytes = "1.5"
-http = "1.0"
-http-body-util = "0.1"
-hyper = { version = "1.1", default-features = false, optional = true }
-tower = { version = "0.4", default-features = false, optional = true }
-
-# For the test-support feature
-async-trait = { version = "0.1", optional = true }
-tokio = { version = "1.33", features = [], optional = true }
+tokio = { version = "1.33", default-features = false }
+tower = { version = "0.4", default-features = false }
+url = { version = "2.5" }
