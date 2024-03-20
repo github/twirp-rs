@@ -10,14 +10,14 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
     - name: Install protoc
       run: script/install-protoc
     - name: Build
       run: make build
+    - name: Lint
+      run: make lint
     - name: Run tests
       run: make test
