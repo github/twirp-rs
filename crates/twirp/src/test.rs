@@ -18,7 +18,9 @@ use crate::{error, Client, Result, TwirpErrorResponse};
 pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), std::io::Error>> {
     let router = test_api_router();
     let addr: std::net::SocketAddr = ([127, 0, 0, 1], port).into();
-    let tcp_listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let tcp_listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .expect("failed to bind to local port");
     println!("Listening on {addr}");
     let h = tokio::spawn(async move { axum::serve(tcp_listener, router).await });
     tokio::time::sleep(Duration::from_millis(100)).await;

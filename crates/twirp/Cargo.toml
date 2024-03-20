@@ -13,7 +13,7 @@ repository = "https://github.com/github/twirp-rs"
 default = ["client", "server", "test-support"]
 test-support = ["dep:async-trait", "dep:tokio"]
 client = ["dep:reqwest", "dep:url"]
-server = ["dep:hyper"]
+server = ["dep:axum", "dep:hyper", "dep:tower"]
 
 [dependencies]
 futures = "0.3"
@@ -23,16 +23,16 @@ serde_json = "1.0"
 thiserror = "1.0"
 
 # For the client feature
-reqwest = { version = "0.11", features = ["default", "gzip", "json"], optional = true }
+reqwest = { version = "0.11", default-features = false, optional = true }
 url = { version = "2.5", optional = true }
 
 # For the server feature
-axum = "0.7"
+axum = { version = "0.7", default-features = false, optional = true }
 bytes = "1.5"
 http = "1.0"
 http-body-util = "0.1"
-hyper = { version = "1.1", features = ["full"], optional = true }
-tower = "0.4"
+hyper = { version = "1.1", default-features = false, optional = true }
+tower = { version = "0.4", default-features = false, optional = true }
 
 # For the test-support feature
 async-trait = { version = "0.1", optional = true }
