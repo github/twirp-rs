@@ -9,10 +9,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
     - name: Install protoc
@@ -21,3 +19,12 @@ jobs:
       run: make build
     - name: Run tests
       run: make test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install protoc
+      run: script/install-protoc
+    - name: Lint
+      run: make lint

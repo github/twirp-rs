@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
-use async_trait::async_trait;
-use axum::routing::get;
+use twirp::async_trait::async_trait;
+use twirp::axum::routing::get;
 use twirp::{invalid_argument, Router, TwirpErrorResponse};
 
 pub mod service {
@@ -33,7 +33,7 @@ pub async fn main() {
         .await
         .expect("failed to bind");
     println!("Listening on {addr}");
-    if let Err(e) = axum::serve(tcp_listener, app).await {
+    if let Err(e) = twirp::axum::serve(tcp_listener, app).await {
         eprintln!("server error: {}", e);
     }
 }
@@ -120,7 +120,7 @@ mod test {
                 let shutdown_receiver = async move {
                     shutdown_receiver.await.unwrap();
                 };
-                if let Err(e) = axum::serve(tcp_listener, app)
+                if let Err(e) = twirp::axum::serve(tcp_listener, app)
                     .with_graceful_shutdown(shutdown_receiver)
                     .await
                 {
