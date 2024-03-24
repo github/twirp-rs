@@ -8,7 +8,7 @@ use http::header::{self, HeaderMap, HeaderValue};
 use hyper::{Response, StatusCode};
 use serde::{Deserialize, Serialize, Serializer};
 
-// Alias for a generic error
+/// Alias for a generic error
 pub type GenericError = Box<dyn std::error::Error + Send + Sync>;
 
 macro_rules! twirp_error_codes {
