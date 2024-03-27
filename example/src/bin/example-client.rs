@@ -28,6 +28,7 @@ pub async fn main() -> Result<(), GenericError> {
         twirp::reqwest::Client::default(),
     )
     .with(RequestHeaders { hmac_key: None })
+    .with(PrintResponseHeaders {})
     .build()?;
     let resp = client
         .with(hostname("localhost"))
@@ -59,13 +60,24 @@ struct RequestHeaders {
 #[async_trait]
 impl Middleware for RequestHeaders {
     async fn handle(&self, mut req: Request, next: Next<'_>) -> twirp::client::Result<Response> {
-        req.headers_mut().append("Request_id", "XYZ".try_into()?);
+        req.headers_mut().append("x-request-id", "XYZ".try_into()?);
         if let Some(_hmac_key) = &self.hmac_key {
             req.headers_mut()
                 .append("Request-HMAC", "example:todo".try_into()?);
         }
         eprintln!("Set headers: {req:?}");
         next.run(req).await
+    }
+}
+
+struct PrintResponseHeaders;
+
+#[async_trait]
+impl Middleware for PrintResponseHeaders {
+    async fn handle(&self, req: Request, next: Next<'_>) -> twirp::client::Result<Response> {
+        let res = next.run(req).await?;
+        eprintln!("Response headers: {res:?}");
+        Ok(res)
     }
 }
 
