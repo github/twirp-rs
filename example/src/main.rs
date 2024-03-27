@@ -102,7 +102,11 @@ async fn request_id_middleware(
 
     let mut res = next.run(request).await;
 
-    let info = res.extensions().get::<ResponseInfo>().unwrap().0;
+    let info = res
+        .extensions()
+        .get::<ResponseInfo>()
+        .expect("must include ResponseInfo")
+        .0;
     res.headers_mut().insert("x-response-info", info.into());
 
     res
