@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use http::Extensions;
 
 /// Context allows passing information between twirp rpc handlers and http middleware by providing
-/// access to extensions on the `http:Request` and `http:Response`.
+/// access to extensions on the `http::Request` and `http::Response`.
 ///
 /// An example use case is to extract a request id from an http header and use that id in subsequent
 /// handler code.
