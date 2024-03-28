@@ -4,10 +4,12 @@
 //! `twirp-build`. See <https://github.com/github/twirp-rs#usage> for details and an example.
 
 use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
 use axum::response::IntoResponse;
 use futures::Future;
+use http::Extensions;
 use http_body_util::BodyExt;
 use hyper::{header, Request, Response};
 use serde::de::DeserializeOwned;
@@ -15,7 +17,7 @@ use serde::Serialize;
 use tokio::time::{Duration, Instant};
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
-use crate::{error, serialize_proto_message, GenericError, TwirpErrorResponse};
+use crate::{error, serialize_proto_message, Context, GenericError, TwirpErrorResponse};
 
 // TODO: Properly implement JsonPb (de)serialization as it is slightly different
 // than standard JSON.
@@ -46,7 +48,7 @@ pub(crate) async fn handle_request<S, F, Fut, Req, Resp>(
     f: F,
 ) -> Response<Body>
 where
-    F: FnOnce(S, Req) -> Fut + Clone + Sync + Send + 'static,
+    F: FnOnce(S, Context, Req) -> Fut + Clone + Sync + Send + 'static,
     Fut: Future<Output = Result<Resp, TwirpErrorResponse>> + Send,
     Req: prost::Message + Default + serde::de::DeserializeOwned,
     Resp: prost::Message + serde::Serialize,
@@ -57,25 +59,29 @@ where
         .copied()
         .unwrap_or_else(|| Timings::new(Instant::now()));
 
-    let (req, resp_fmt) = match parse_request(req, &mut timings).await {
+    let (req, exts, resp_fmt) = match parse_request(req, &mut timings).await {
         Ok(pair) => pair,
         Err(err) => {
-            // This is the only place we use tracing (would be nice to remove)
-            // tracing::error!(?err, "failed to parse request");
-            // TODO: We don't want to lose the underlying error here, but it might not be safe to
-            // include in the response like this always.
+            // TODO: Capture original error in the response extensions. E.g.:
+            // resp_exts
+            //     .lock()
+            //     .expect("mutex poisoned")
+            //     .insert(RequestError(err));
             let mut twirp_err = error::malformed("bad request");
             twirp_err.insert_meta("error".to_string(), err.to_string());
             return twirp_err.into_response();
         }
     };
 
-    let res = f(service, req).await;
+    let resp_exts = Arc::new(Mutex::new(Extensions::new()));
+    let ctx = Context::new(exts, resp_exts.clone());
+    let res = f(service, ctx, req).await;
     timings.set_response_handled();
 
     let mut resp = match write_response(res, resp_fmt) {
         Ok(resp) => resp,
         Err(err) => {
+            // TODO: Capture original error in the response extensions.
             let mut twirp_err = error::unknown("error serializing response");
             twirp_err.insert_meta("error".to_string(), err.to_string());
             return twirp_err.into_response();
@@ -83,6 +89,8 @@ where
     };
     timings.set_response_written();
 
+    resp.extensions_mut()
+        .extend(resp_exts.lock().expect("mutex poisoned").clone());
     resp.extensions_mut().insert(timings);
     resp
 }
@@ -90,19 +98,20 @@ where
 async fn parse_request<T>(
     req: Request<Body>,
     timings: &mut Timings,
-) -> Result<(T, BodyFormat), GenericError>
+) -> Result<(T, Extensions, BodyFormat), GenericError>
 where
     T: prost::Message + Default + DeserializeOwned,
 {
     let format = BodyFormat::from_content_type(&req);
-    let bytes = req.into_body().collect().await?.to_bytes();
+    let (parts, body) = req.into_parts();
+    let bytes = body.collect().await?.to_bytes();
     timings.set_received();
     let request = match format {
         BodyFormat::Pb => T::decode(&bytes[..])?,
         BodyFormat::JsonPb => serde_json::from_slice(&bytes)?,
     };
     timings.set_parsed();
-    Ok((request, format))
+    Ok((request, parts.extensions, format))
 }
 
 fn write_response<T>(
@@ -233,6 +242,7 @@ mod tests {
     use super::*;
     use crate::test::*;
 
+    use axum::middleware::{self, Next};
     use tower::Service;
 
     fn timings() -> Timings {
@@ -298,5 +308,47 @@ mod tests {
         assert!(resp.status().is_server_error(), "{:?}", resp);
         let data = read_err_body(resp.into_body()).await;
         assert_eq!(data, error::internal("boom!"));
+    }
+
+    #[tokio::test]
+    async fn test_middleware() {
+        let mut router = test_api_router().layer(middleware::from_fn(request_id_middleware));
+
+        // no request-id header
+        let resp = router.call(gen_ping_request("hi")).await.unwrap();
+        assert!(resp.status().is_success(), "{:?}", resp);
+        let data: PingResponse = read_json_body(resp.into_body()).await;
+        assert_eq!(&data.name, "hi");
+
+        // now pass a header with x-request-id
+        let req = Request::post("/twirp/test.TestAPI/Ping")
+            .header("x-request-id", "abcd")
+            .body(Body::from(
+                serde_json::to_string(&PingRequest {
+                    name: "hello".to_string(),
+                })
+                .expect("will always be valid json"),
+            ))
+            .expect("always a valid twirp request");
+        let resp = router.call(req).await.unwrap();
+        assert!(resp.status().is_success(), "{:?}", resp);
+        let data: PingResponse = read_json_body(resp.into_body()).await;
+        assert_eq!(&data.name, "hello-abcd");
+    }
+
+    async fn request_id_middleware(
+        mut request: http::Request<Body>,
+        next: Next,
+    ) -> http::Response<Body> {
+        let rid = request
+            .headers()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .map(|x| RequestId(x.to_string()));
+        if let Some(rid) = rid {
+            request.extensions_mut().insert(rid);
+        }
+
+        next.run(request).await
     }
 }

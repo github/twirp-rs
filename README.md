@@ -28,7 +28,7 @@ Add the `twirp-build` crate as a build dependency in your `Cargo.toml` (you'll n
 ```toml
 # Cargo.toml
 [build-dependencies]
-twirp-build = "0.2"
+twirp-build = "0.3"
 prost-build = "0.12"
 ```
 
@@ -37,7 +37,7 @@ Add a `build.rs` file to your project to compile the protos and generate Rust co
 ```rust
 fn main() {
     let proto_source_files = ["./service.proto"];
-    
+
     // Tell Cargo to rerun this build script if any of the proto files change
     for entry in &proto_source_files {
         println!("cargo:rerun-if-changed={}", entry);
@@ -82,7 +82,7 @@ struct HaberdasherApiServer;
 
 #[async_trait]
 impl haberdash::HaberdasherApi for HaberdasherApiServer {
-    async fn make_hat(&self, req: MakeHatRequest) -> Result<MakeHatResponse, TwirpErrorResponse> {
+    async fn make_hat(&self, ctx: twirp::Context, req: MakeHatRequest) -> Result<MakeHatResponse, TwirpErrorResponse> {
         todo!()
     }
 }
