@@ -408,12 +408,6 @@ checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
 
 [[package]]
 name = "heck"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
-
-[[package]]
-name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
@@ -787,7 +781,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80b776a1b2dc779f5ee0641f8ade0125bc1298dd41a9a0c16d8bd57b42d222b1"
 dependencies = [
  "bytes",
- "heck 0.5.0",
+ "heck",
  "itertools",
  "log",
  "multimap",
@@ -840,11 +834,11 @@ dependencies = [
 
 [[package]]
 name = "prost-wkt-build"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b31cae9a54ca84fee1504740a82eebf2479532905e106f63ca0c3bc8d780321"
+checksum = "598b7365952c2ed4e32902de0533653aafbe5ae3da436e8e2335c7d375a1cef3"
 dependencies = [
- "heck 0.4.1",
+ "heck",
  "prost",
  "prost-build",
  "prost-types",
