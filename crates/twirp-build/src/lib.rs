@@ -19,6 +19,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let service_fqn = format!("{}.{}", service.package, service.proto_name);
         writeln!(buf).unwrap();
 
+        writeln!(buf, "pub use twirp;").unwrap();
+        writeln!(buf).unwrap();
         writeln!(buf, "pub const SERVICE_FQN: &str = \"/{service_fqn}\";").unwrap();
 
         //
