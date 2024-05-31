@@ -10,7 +10,7 @@ prost = "0.12"
 prost-wkt = "0.5"
 prost-wkt-types = "0.5"
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.28", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros"] }
 
 [build-dependencies]
 twirp-build = { path = "../crates/twirp-build" }
