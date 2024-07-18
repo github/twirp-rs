@@ -6,9 +6,10 @@ edition = "2021"
 [dependencies]
 twirp = { path = "../crates/twirp" }
 
-prost = "0.12"
-prost-wkt = "0.5"
-prost-wkt-types = "0.5"
+prost = "0.13"
+# TODO: Go back to a true release, waiting on https://github.com/fdeantoni/prost-wkt/pull/68
+prost-wkt = { git = "https://github.com/fdeantoni/prost-wkt.git", rev = "0d06c21b24f195fb2bf6e8558111eae9c552f466" }
+prost-wkt-types = { git = "https://github.com/fdeantoni/prost-wkt.git", rev = "0d06c21b24f195fb2bf6e8558111eae9c552f466" }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.38", features = ["rt-multi-thread", "macros"] }
 
@@ -18,7 +19,8 @@ twirp-build = { path = "../crates/twirp-build" }
 fs-err = "2.8"
 glob = "0.3.0"
 prost-build = "0.13"
-prost-wkt-build = "0.5"
+# TODO: Go back to a true release, waiting on https://github.com/fdeantoni/prost-wkt/pull/68
+prost-wkt-build = { git = "https://github.com/fdeantoni/prost-wkt.git", rev = "0d06c21b24f195fb2bf6e8558111eae9c552f466" }
 
 [[bin]]
 name = "example-client"
