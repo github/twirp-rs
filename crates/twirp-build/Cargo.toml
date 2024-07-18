@@ -10,4 +10,4 @@ categories = ["network-programming"]
 repository = "https://github.com/github/twirp-rs"
 
 [dependencies]
-prost-build = "0.12"
+prost-build = "0.13"
