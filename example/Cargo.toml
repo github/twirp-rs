@@ -22,6 +22,9 @@ prost-build = "0.13"
 # TODO: Go back to a true release, waiting on https://github.com/fdeantoni/prost-wkt/pull/68
 prost-wkt-build = { git = "https://github.com/fdeantoni/prost-wkt.git", rev = "0d06c21b24f195fb2bf6e8558111eae9c552f466" }
 
+[package.metadata.cargo-machete]
+ignored = ["prost", "prost-wkt", "serde"]
+
 [[bin]]
 name = "example-client"
 path = "src/bin/example-client.rs"
