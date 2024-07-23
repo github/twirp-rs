@@ -7,9 +7,10 @@ use thiserror::Error;
 use url::Url;
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
-use crate::{serialize_proto_message, TwirpErrorResponse};
+use crate::{serialize_proto_message, GenericError, TwirpErrorResponse};
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ClientError {
     #[error(transparent)]
     InvalidHeader(#[from] InvalidHeaderValue),
@@ -36,6 +37,10 @@ pub enum ClientError {
     ReqwestError(#[from] reqwest::Error),
     #[error("twirp error: {0:?}")]
     TwirpError(TwirpErrorResponse),
+
+    /// A generic error that can be used by custom middleware.
+    #[error(transparent)]
+    MiddlewareError(#[from] GenericError),
 }
 
 pub type Result<T, E = ClientError> = std::result::Result<T, E>;
