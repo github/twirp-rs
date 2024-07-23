@@ -164,15 +164,15 @@ pub async fn not_found_handler() -> Response<Body> {
 #[derive(Debug, Clone, Copy)]
 pub struct Timings {
     // When the request started.
-    pub start: Instant,
+    start: Instant,
     // When the request was received (headers and body).
-    pub request_received: Option<Instant>,
+    request_received: Option<Instant>,
     // When the request body was parsed.
-    pub request_parsed: Option<Instant>,
+    request_parsed: Option<Instant>,
     // When the response handler returned.
-    pub response_handled: Option<Instant>,
+    response_handled: Option<Instant>,
     // When the response was written.
-    pub response_written: Option<Instant>,
+    response_written: Option<Instant>,
 }
 
 impl Timings {
@@ -233,6 +233,11 @@ impl Timings {
             }
             _ => None,
         }
+    }
+
+    /// The total duration since the request started.
+    pub fn total_duration(&self) -> Duration {
+        self.start.elapsed()
     }
 }
 
