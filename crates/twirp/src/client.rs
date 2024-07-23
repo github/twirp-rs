@@ -10,6 +10,7 @@ use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
 use crate::{serialize_proto_message, GenericError, TwirpErrorResponse};
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ClientError {
     #[error(transparent)]
     InvalidHeader(#[from] InvalidHeaderValue),
@@ -39,7 +40,7 @@ pub enum ClientError {
 
     /// A generic error that can be used by custom middleware.
     #[error(transparent)]
-    Generic(#[from] GenericError),
+    MiddlewareError(#[from] GenericError),
 }
 
 pub type Result<T, E = ClientError> = std::result::Result<T, E>;
