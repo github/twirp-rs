@@ -106,11 +106,10 @@ where
             .unwrap();
             writeln!(
                 buf,
-                r#"    let url = self.base_url().join("{}/{}")?;"#,
-                service_fqn, m.proto_name,
+                r#"    self.request("{}/{}", req).await"#,
+                service_fqn, m.proto_name
             )
             .unwrap();
-            writeln!(buf, "    self.request(url, req).await",).unwrap();
             writeln!(buf, "    }}").unwrap();
         }
         writeln!(buf, "}}").unwrap();

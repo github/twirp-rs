@@ -121,8 +121,7 @@ pub trait TestApiClient {
 #[async_trait]
 impl TestApiClient for Client {
     async fn ping(&self, req: PingRequest) -> Result<PingResponse> {
-        let url = self.base_url().join("test.TestAPI/Ping")?;
-        self.request(url, req).await
+        self.request("test.TestAPI/Ping", req).await
     }
 
     async fn boom(&self, _req: PingRequest) -> Result<PingResponse> {

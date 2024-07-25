@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::vec;
 
 use async_trait::async_trait;
 use reqwest::header::{InvalidHeaderValue, CONTENT_TYPE};
@@ -48,7 +49,7 @@ pub type Result<T, E = ClientError> = std::result::Result<T, E>;
 pub struct ClientBuilder {
     base_url: Url,
     http_client: reqwest::Client,
-    middleware: Vec<Arc<dyn Middleware>>,
+    middleware: Vec<Box<dyn Middleware>>,
 }
 
 impl ClientBuilder {
@@ -67,8 +68,8 @@ impl ClientBuilder {
     where
         M: Middleware,
     {
-        let mut mw = self.middleware.clone();
-        mw.push(Arc::new(middleware));
+        let mut mw = self.middleware;
+        mw.push(Box::new(middleware));
         Self {
             base_url: self.base_url,
             http_client: self.http_client,
@@ -81,17 +82,21 @@ impl ClientBuilder {
     }
 }
 
-/// `Client` is a Twirp HTTP Client that uses `reqwest::Client` to make http
+/// `Client` is a Twirp HTTP client that uses `reqwest::Client` to make http
 /// requests.
+///
+/// You do **not** have to wrap `Client` in an [`Rc`] or [`Arc`] to **reuse** it,
+/// because it already uses an [`Arc`] internally.
 #[derive(Clone)]
 pub struct Client {
     http_client: reqwest::Client,
     inner: Arc<ClientRef>,
+    host: Option<String>,
 }
 
 struct ClientRef {
     base_url: Url,
-    middlewares: Vec<Arc<dyn Middleware>>,
+    middlewares: Vec<Box<dyn Middleware>>,
 }
 
 impl std::fmt::Debug for Client {
@@ -112,7 +117,7 @@ impl Client {
     pub fn new(
         base_url: Url,
         http_client: reqwest::Client,
-        middlewares: Vec<Arc<dyn Middleware>>,
+        middlewares: Vec<Box<dyn Middleware>>,
     ) -> Result<Self> {
         if base_url.path().ends_with('/') {
             Ok(Client {
@@ -121,6 +126,7 @@ impl Client {
                     base_url,
                     middlewares,
                 }),
+                host: None,
             })
         } else {
             Err(ClientError::InvalidBaseUrl(base_url))
@@ -139,28 +145,26 @@ impl Client {
         &self.inner.base_url
     }
 
-    /// Add middleware to this specific request stack. Middlewares are invoked
-    /// in the order they are added as part of the request cycle. Middleware
-    /// added here will run after any middleware added with the `ClientBuilder`.
-    pub fn with<M>(mut self, middleware: M) -> Self
-    where
-        M: Middleware,
-    {
-        let mut middlewares = self.inner.middlewares.clone();
-        middlewares.push(Arc::new(middleware));
-        self.inner = Arc::new(ClientRef {
-            base_url: self.inner.base_url.clone(),
-            middlewares,
-        });
-        self
+    /// Creates a new `twirp::Client` with the same configuration as the current
+    /// one, but with a different host in the base URL.
+    pub fn with_host(self, host: &str) -> Self {
+        Self {
+            http_client: self.http_client,
+            inner: self.inner,
+            host: Some(host.to_string()),
+        }
     }
 
     /// Make an HTTP twirp request.
-    pub async fn request<I, O>(&self, url: Url, body: I) -> Result<O>
+    pub async fn request<I, O>(&self, path: &str, body: I) -> Result<O>
     where
         I: prost::Message,
         O: prost::Message + Default,
     {
+        let mut url = self.inner.base_url.join(path)?;
+        if let Some(host) = &self.host {
+            url.set_host(Some(host))?
+        };
         let path = url.path().to_string();
         let req = self
             .http_client
@@ -226,13 +230,13 @@ where
 #[derive(Clone)]
 pub struct Next<'a> {
     client: &'a reqwest::Client,
-    middlewares: &'a [Arc<dyn Middleware>],
+    middlewares: &'a [Box<dyn Middleware>],
 }
 
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
 
 impl<'a> Next<'a> {
-    pub(crate) fn new(client: &'a reqwest::Client, middlewares: &'a [Arc<dyn Middleware>]) -> Self {
+    pub(crate) fn new(client: &'a reqwest::Client, middlewares: &'a [Box<dyn Middleware>]) -> Self {
         Next {
             client,
             middlewares,
