@@ -81,21 +81,25 @@ impl ClientBuilder {
     }
 }
 
-/// `HttpTwirpClient` is a TwirpClient that uses `reqwest::Client` to make http
+/// `Client` is a Twirp HTTP Client that uses `reqwest::Client` to make http
 /// requests.
 #[derive(Clone)]
 pub struct Client {
-    pub base_url: Url,
     http_client: reqwest::Client,
+    inner: Arc<ClientRef>,
+}
+
+struct ClientRef {
+    base_url: Url,
     middlewares: Vec<Arc<dyn Middleware>>,
 }
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TwirpClient")
-            .field("base_url", &self.base_url)
+        f.debug_struct("Client")
+            .field("base_url", &self.inner.base_url)
             .field("client", &self.http_client)
-            .field("middlewares", &self.middlewares.len())
+            .field("middlewares", &self.inner.middlewares.len())
             .finish()
     }
 }
@@ -112,9 +116,11 @@ impl Client {
     ) -> Result<Self> {
         if base_url.path().ends_with('/') {
             Ok(Client {
-                base_url,
                 http_client,
-                middlewares,
+                inner: Arc::new(ClientRef {
+                    base_url,
+                    middlewares,
+                }),
             })
         } else {
             Err(ClientError::InvalidBaseUrl(base_url))
@@ -129,6 +135,10 @@ impl Client {
         Self::new(base_url, reqwest::Client::new(), vec![])
     }
 
+    pub fn base_url(&self) -> &Url {
+        &self.inner.base_url
+    }
+
     /// Add middleware to this specific request stack. Middlewares are invoked
     /// in the order they are added as part of the request cycle. Middleware
     /// added here will run after any middleware added with the `ClientBuilder`.
@@ -136,7 +146,12 @@ impl Client {
     where
         M: Middleware,
     {
-        self.middlewares.push(Arc::new(middleware));
+        let mut middlewares = self.inner.middlewares.clone();
+        middlewares.push(Arc::new(middleware));
+        self.inner = Arc::new(ClientRef {
+            base_url: self.inner.base_url.clone(),
+            middlewares,
+        });
         self
     }
 
@@ -155,7 +170,7 @@ impl Client {
             .build()?;
 
         // Create and execute the middleware handlers
-        let next = Next::new(&self.http_client, &self.middlewares);
+        let next = Next::new(&self.http_client, &self.inner.middlewares);
         let resp = next.run(req).await?;
 
         // These have to be extracted because reading the body consumes `Response`.

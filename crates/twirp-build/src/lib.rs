@@ -106,7 +106,7 @@ where
             .unwrap();
             writeln!(
                 buf,
-                r#"    let url = self.base_url.join("{}/{}")?;"#,
+                r#"    let url = self.base_url().join("{}/{}")?;"#,
                 service_fqn, m.proto_name,
             )
             .unwrap();
