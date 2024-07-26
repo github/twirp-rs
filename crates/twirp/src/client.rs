@@ -147,10 +147,10 @@ impl Client {
 
     /// Creates a new `twirp::Client` with the same configuration as the current
     /// one, but with a different host in the base URL.
-    pub fn with_host(self, host: &str) -> Self {
+    pub fn with_host(&self, host: &str) -> Self {
         Self {
-            http_client: self.http_client,
-            inner: self.inner,
+            http_client: self.http_client.clone(),
+            inner: self.inner.clone(),
             host: Some(host.to_string()),
         }
     }
