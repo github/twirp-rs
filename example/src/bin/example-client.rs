@@ -31,26 +31,12 @@ pub async fn main() -> Result<(), GenericError> {
     .with(PrintResponseHeaders {})
     .build()?;
     let resp = client
-        .with(hostname("localhost"))
+        .with_host("localhost")
         .make_hat(MakeHatRequest { inches: 1 })
         .await;
     eprintln!("{:?}", resp);
 
     Ok(())
-}
-
-fn hostname(hostname: &str) -> DynamicHostname {
-    DynamicHostname(hostname.to_string())
-}
-struct DynamicHostname(String);
-
-#[async_trait]
-impl Middleware for DynamicHostname {
-    async fn handle(&self, mut req: Request, next: Next<'_>) -> twirp::client::Result<Response> {
-        req.url_mut().set_host(Some(&self.0))?;
-        eprintln!("Set hostname");
-        next.run(req).await
-    }
 }
 
 struct RequestHeaders {
