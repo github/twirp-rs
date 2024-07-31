@@ -720,8 +720,9 @@ dependencies = [
 
 [[package]]
 name = "prost-wkt"
-version = "0.5.1"
-source = "git+https://github.com/fdeantoni/prost-wkt.git?rev=0d06c21b24f195fb2bf6e8558111eae9c552f466#0d06c21b24f195fb2bf6e8558111eae9c552f466"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8d84e2bee181b04c2bac339f2bfe818c46a99750488cc6728ce4181d5aa8299"
 dependencies = [
  "chrono",
  "inventory",
@@ -734,8 +735,9 @@ dependencies = [
 
 [[package]]
 name = "prost-wkt-build"
-version = "0.5.1"
-source = "git+https://github.com/fdeantoni/prost-wkt.git?rev=0d06c21b24f195fb2bf6e8558111eae9c552f466#0d06c21b24f195fb2bf6e8558111eae9c552f466"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a669d5acbe719010c6f62a64e6d7d88fdedc1fe46e419747949ecb6312e9b14"
 dependencies = [
  "heck",
  "prost",
@@ -746,8 +748,9 @@ dependencies = [
 
 [[package]]
 name = "prost-wkt-types"
-version = "0.5.1"
-source = "git+https://github.com/fdeantoni/prost-wkt.git?rev=0d06c21b24f195fb2bf6e8558111eae9c552f466#0d06c21b24f195fb2bf6e8558111eae9c552f466"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01ef068e9b82e654614b22e6b13699bd545b6c0e2e721736008b00b38aeb4f64"
 dependencies = [
  "chrono",
  "prost",
