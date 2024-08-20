@@ -1,5 +1,4 @@
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 use twirp::async_trait::async_trait;
@@ -24,7 +23,7 @@ async fn ping() -> &'static str {
 
 #[tokio::main]
 pub async fn main() {
-    let api_impl = Arc::new(HaberdasherApiServer {});
+    let api_impl = HaberdasherApiServer {};
     let middleware = twirp::tower::builder::ServiceBuilder::new()
         .layer(middleware::from_fn(request_id_middleware));
     let twirp_routes = Router::new()
@@ -45,6 +44,7 @@ pub async fn main() {
     }
 }
 
+#[derive(Clone)]
 struct HaberdasherApiServer;
 
 #[async_trait]
@@ -151,7 +151,7 @@ mod test {
     }
 
     impl NetServer {
-        async fn start(api_impl: Arc<HaberdasherApiServer>) -> Self {
+        async fn start(api_impl: HaberdasherApiServer) -> Self {
             let twirp_routes =
                 Router::new().nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
             let app = Router::new()
@@ -194,7 +194,7 @@ mod test {
 
     #[tokio::test]
     async fn test_net() {
-        let api_impl = Arc::new(HaberdasherApiServer {});
+        let api_impl = HaberdasherApiServer {};
         let server = NetServer::start(api_impl).await;
 
         let url = Url::parse(&format!("http://localhost:{}/twirp/", server.port)).unwrap();
