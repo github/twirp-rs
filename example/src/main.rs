@@ -44,6 +44,7 @@ pub async fn main() {
     }
 }
 
+// Note: If your server type can't be Clone, consider wrapping it in `std::sync::Arc`.
 #[derive(Clone)]
 struct HaberdasherApiServer;
 
