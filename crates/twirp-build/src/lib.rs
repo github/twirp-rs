@@ -38,12 +38,29 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         }
         writeln!(buf, "}}").unwrap();
 
+        writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
+        writeln!(buf, "impl<T> {service_name} for std::sync::Arc<T>").unwrap();
+        writeln!(buf, "where").unwrap();
+        writeln!(buf, "    T: {service_name} + Sync + Send").unwrap();
+        writeln!(buf, "{{").unwrap();
+        for m in &service.methods {
+            writeln!(
+                buf,
+                "    async fn {}(&self, ctx: twirp::Context, req: {}) -> Result<{}, twirp::TwirpErrorResponse> {{",
+                m.name, m.input_type, m.output_type,
+            )
+                .unwrap();
+            writeln!(buf, "        (*self).{}(ctx, req).await", m.name).unwrap();
+            writeln!(buf, "    }}").unwrap();
+        }
+        writeln!(buf, "}}").unwrap();
+
         // add_service
         writeln!(
             buf,
-            r#"pub fn router<T>(api: std::sync::Arc<T>) -> twirp::Router
+            r#"pub fn router<T>(api: T) -> twirp::Router
 where
-    T: {service_name} + Send + Sync + 'static,
+    T: {service_name} + Clone + Send + Sync + 'static,
 {{
     twirp::details::TwirpRouterBuilder::new(api)"#,
         )
@@ -54,7 +71,7 @@ where
             let rust_method_name = &m.name;
             writeln!(
                 buf,
-                r#"        .route("/{uri}", |api: std::sync::Arc<T>, ctx: twirp::Context, req: {req_type}| async move {{
+                r#"        .route("/{uri}", |api: T, ctx: twirp::Context, req: {req_type}| async move {{
             api.{rust_method_name}(ctx, req).await
         }})"#,
             )
