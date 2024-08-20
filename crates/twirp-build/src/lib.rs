@@ -38,6 +38,23 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         }
         writeln!(buf, "}}").unwrap();
 
+        writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
+        writeln!(buf, "impl<T> {service_name} for std::sync::Arc<T>").unwrap();
+        writeln!(buf, "where").unwrap();
+        writeln!(buf, "    T: {service_name} + Sync + Send").unwrap();
+        writeln!(buf, "{{").unwrap();
+        for m in &service.methods {
+            writeln!(
+                buf,
+                "    async fn {}(&self, ctx: twirp::Context, req: {}) -> Result<{}, twirp::TwirpErrorResponse> {{",
+                m.name, m.input_type, m.output_type,
+            )
+                .unwrap();
+            writeln!(buf, "        (*self).{}(ctx, req).await", m.name).unwrap();
+            writeln!(buf, "    }}").unwrap();
+        }
+        writeln!(buf, "}}").unwrap();
+
         // add_service
         writeln!(
             buf,
