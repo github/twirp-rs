@@ -50,7 +50,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 m.name, m.input_type, m.output_type,
             )
                 .unwrap();
-            writeln!(buf, "        (*self).{}(ctx, req).await", m.name).unwrap();
+            writeln!(buf, "        T::{}(&*self, ctx, req).await", m.name).unwrap();
             writeln!(buf, "    }}").unwrap();
         }
         writeln!(buf, "}}").unwrap();
