@@ -16,7 +16,7 @@ test-support = []
 async-trait = "0.1"
 axum = "0.7"
 futures = "0.3"
-http = "1.0"
+http = "1.2"
 http-body-util = "0.1"
 hyper = { version = "1.5", default-features = false }
 prost = "0.13"
