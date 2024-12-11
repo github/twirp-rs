@@ -67,6 +67,7 @@ impl Middleware for PrintResponseHeaders {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 struct MockHaberdasherApiClient;
 
