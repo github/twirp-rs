@@ -1,6 +1,6 @@
 [toolchain]
-channel = "1.77.0"
-components = [ "rustfmt" ]
+channel = "1.83.0"
+components = ["rustfmt"]
 profile = "default"
 
 # Details on supported fields: https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file
