@@ -14,7 +14,7 @@ test-support = []
 
 [dependencies]
 async-trait = "0.1"
-axum = "0.7"
+axum = "0.8"
 futures = "0.3"
 http = "1.2"
 http-body-util = "0.1"
