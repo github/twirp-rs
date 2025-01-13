@@ -3,10 +3,9 @@
 use std::future::Future;
 
 use axum::extract::{Request, State};
-use axum::response::IntoResponse;
 use axum::Router;
 
-use crate::{server, Context};
+use crate::{server, Context, IntoTwirpResponse};
 
 /// Builder object used by generated code to build a Twirp service.
 ///
@@ -38,7 +37,7 @@ where
         Fut: Future<Output = Result<Res, Err>> + Send,
         Req: prost::Message + Default + serde::de::DeserializeOwned,
         Res: prost::Message + serde::Serialize,
-        Err: IntoResponse,
+        Err: IntoTwirpResponse,
     {
         TwirpRouterBuilder {
             service: self.service,

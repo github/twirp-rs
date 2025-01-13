@@ -63,7 +63,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             r#"pub fn router<T>(api: T) -> twirp::Router
 where
     T: {service_name} + Clone + Send + Sync + 'static,
-    <T as {service_name}>::Error: twirp::axum::response::IntoResponse,
+    <T as {service_name}>::Error: twirp::IntoTwirpResponse,
 {{
     twirp::details::TwirpRouterBuilder::new(api)"#,
         )

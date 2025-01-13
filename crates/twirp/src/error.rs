@@ -8,6 +8,12 @@ use http::header::{self, HeaderMap, HeaderValue};
 use hyper::{Response, StatusCode};
 use serde::{Deserialize, Serialize, Serializer};
 
+/// Trait for user-defined error types that can be converted to Twirp responses.
+pub trait IntoTwirpResponse {
+    /// Generate a Twirp response.
+    fn into_twirp_response(self) -> Response<Body>;
+}
+
 /// Alias for a generic error
 pub type GenericError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -151,6 +157,12 @@ pub struct TwirpErrorResponse {
 impl TwirpErrorResponse {
     pub fn insert_meta(&mut self, key: String, value: String) -> Option<String> {
         self.meta.insert(key, value)
+    }
+}
+
+impl IntoTwirpResponse for TwirpErrorResponse {
+    fn into_twirp_response(self) -> Response<Body> {
+        IntoResponse::into_response(self)
     }
 }
 

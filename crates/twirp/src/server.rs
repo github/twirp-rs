@@ -17,7 +17,7 @@ use serde::Serialize;
 use tokio::time::{Duration, Instant};
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
-use crate::{error, serialize_proto_message, Context, GenericError};
+use crate::{error, serialize_proto_message, Context, GenericError, IntoTwirpResponse};
 
 // TODO: Properly implement JsonPb (de)serialization as it is slightly different
 // than standard JSON.
@@ -52,7 +52,7 @@ where
     Fut: Future<Output = Result<Resp, Err>> + Send,
     Req: prost::Message + Default + serde::de::DeserializeOwned,
     Resp: prost::Message + serde::Serialize,
-    Err: IntoResponse,
+    Err: IntoTwirpResponse,
 {
     let mut timings = req
         .extensions()
@@ -70,7 +70,7 @@ where
             //     .insert(RequestError(err));
             let mut twirp_err = error::malformed("bad request");
             twirp_err.insert_meta("error".to_string(), err.to_string());
-            return twirp_err.into_response();
+            return twirp_err.into_twirp_response();
         }
     };
 
@@ -85,7 +85,7 @@ where
             // TODO: Capture original error in the response extensions.
             let mut twirp_err = error::unknown("error serializing response");
             twirp_err.insert_meta("error".to_string(), err.to_string());
-            return twirp_err.into_response();
+            return twirp_err.into_twirp_response();
         }
     };
     timings.set_response_written();
@@ -121,7 +121,7 @@ fn write_response<T, Err>(
 ) -> Result<Response<Body>, GenericError>
 where
     T: prost::Message + Serialize,
-    Err: IntoResponse,
+    Err: IntoTwirpResponse,
 {
     let res = match response {
         Ok(response) => match response_format {
@@ -135,7 +135,7 @@ where
                     .body(Body::from(data))?
             }
         },
-        Err(err) => err.into_response(),
+        Err(err) => err.into_twirp_response(),
     };
     Ok(res)
 }
