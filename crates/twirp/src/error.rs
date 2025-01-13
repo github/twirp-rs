@@ -10,7 +10,23 @@ use serde::{Deserialize, Serialize, Serializer};
 
 /// Trait for user-defined error types that can be converted to Twirp responses.
 pub trait IntoTwirpResponse {
-    /// Generate a Twirp response.
+    /// Generate a Twirp response. This method *can* return any HTTP response, but it should return
+    /// one that complies with the Twirp standard; an easy way to do this is to use
+    /// [`TwirpErrorResponse`], e.g.
+    ///
+    /// ```
+    /// use axum::body::Body;
+    /// use http::Response;
+    /// use twirp::IntoTwirpResponse;
+    /// # struct MyError { message: &'static str }
+    ///
+    /// impl IntoTwirpResponse for MyError {
+    ///     fn into_twirp_response(self) -> Response<Body> {
+    ///         twirp::invalid_argument(self.message)
+    ///             .into_twirp_response()
+    ///     }
+    /// }
+    /// ```
     fn into_twirp_response(self) -> Response<Body>;
 }
 
