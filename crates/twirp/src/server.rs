@@ -135,7 +135,7 @@ where
                     .body(Body::from(data))?
             }
         },
-        Err(err) => err.into_response(),
+        Err(err) => err.into_twirp_response().map(|err| err.into_axum_body()),
     };
     Ok(res)
 }
