@@ -3,9 +3,10 @@
 use std::future::Future;
 
 use axum::extract::{Request, State};
+use axum::response::IntoResponse;
 use axum::Router;
 
-use crate::{server, Context, TwirpErrorResponse};
+use crate::{server, Context};
 
 /// Builder object used by generated code to build a Twirp service.
 ///
@@ -31,12 +32,13 @@ where
     ///
     /// The generated code passes a closure that calls the method, like
     /// `|api: Arc<HaberdasherApiServer>, req: MakeHatRequest| async move { api.make_hat(req) }`.
-    pub fn route<F, Fut, Req, Res>(self, url: &str, f: F) -> Self
+    pub fn route<F, Fut, Req, Res, Err>(self, url: &str, f: F) -> Self
     where
         F: Fn(S, Context, Req) -> Fut + Clone + Sync + Send + 'static,
-        Fut: Future<Output = Result<Res, TwirpErrorResponse>> + Send,
+        Fut: Future<Output = Result<Res, Err>> + Send,
         Req: prost::Message + Default + serde::de::DeserializeOwned,
         Res: prost::Message + serde::Serialize,
+        Err: IntoResponse,
     {
         TwirpRouterBuilder {
             service: self.service,

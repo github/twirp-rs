@@ -28,7 +28,7 @@ Add the `twirp-build` crate as a build dependency in your `Cargo.toml` (you'll n
 ```toml
 # Cargo.toml
 [build-dependencies]
-twirp-build = "0.3"
+twirp-build = "0.7"
 prost-build = "0.13"
 ```
 
