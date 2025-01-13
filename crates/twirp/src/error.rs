@@ -10,9 +10,8 @@ use serde::{Deserialize, Serialize, Serializer};
 
 /// Trait for user-defined error types that can be converted to Twirp responses.
 pub trait IntoTwirpResponse {
-    /// Generate a Twirp response. This method *can* return any HTTP response, but it should return
-    /// one that complies with the Twirp standard; an easy way to do this is to use
-    /// [`TwirpErrorResponse`], e.g.
+    /// Generate a Twirp response. The return type is the `http::Response` type, with a
+    /// [`TwirpErrorResponse`] as the body. The simplest way to implement this is:
     ///
     /// ```
     /// use axum::body::Body;
