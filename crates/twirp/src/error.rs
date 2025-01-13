@@ -18,15 +18,23 @@ pub trait IntoTwirpResponse {
     /// use axum::body::Body;
     /// use http::Response;
     /// use twirp::IntoTwirpResponse;
-    /// # struct MyError { message: &'static str }
+    /// # struct MyError { message: String }
     ///
     /// impl IntoTwirpResponse for MyError {
     ///     fn into_twirp_response(self) -> Response<Body> {
-    ///         twirp::invalid_argument(self.message)
-    ///             .into_twirp_response()
+    ///         // Use TwirpErrorResponse to generate a valid starting point
+    ///         let mut response = twirp::invalid_argument(&self.message)
+    ///             .into_twirp_response();
+    ///
+    ///         // Customize the response as desired.
+    ///         response.headers_mut().insert("X-Server-Pid", std::process::id().into());
+    ///         response
     ///     }
     /// }
     /// ```
+    ///
+    /// The `Response` that `TwirpErrorResponse` generates can be used as a starting point,
+    /// adding headers and extensions to it.
     fn into_twirp_response(self) -> Response<Body>;
 }
 
