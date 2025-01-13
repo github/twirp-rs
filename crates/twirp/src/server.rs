@@ -70,7 +70,7 @@ where
             //     .insert(RequestError(err));
             let mut twirp_err = error::malformed("bad request");
             twirp_err.insert_meta("error".to_string(), err.to_string());
-            return twirp_err.into_twirp_response();
+            return twirp_err.into_response();
         }
     };
 
@@ -85,7 +85,7 @@ where
             // TODO: Capture original error in the response extensions.
             let mut twirp_err = error::unknown("error serializing response");
             twirp_err.insert_meta("error".to_string(), err.to_string());
-            return twirp_err.into_twirp_response();
+            return twirp_err.into_response();
         }
     };
     timings.set_response_written();
@@ -135,7 +135,7 @@ where
                     .body(Body::from(data))?
             }
         },
-        Err(err) => err.into_twirp_response(),
+        Err(err) => err.into_response(),
     };
     Ok(res)
 }

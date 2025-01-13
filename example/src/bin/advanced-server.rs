@@ -8,7 +8,7 @@ use twirp::axum::body::Body;
 use twirp::axum::http;
 use twirp::axum::middleware::{self, Next};
 use twirp::axum::routing::get;
-use twirp::{invalid_argument, Context, IntoTwirpResponse, Router};
+use twirp::{invalid_argument, Context, IntoTwirpResponse, Router, TwirpErrorResponse};
 
 pub mod service {
     pub mod haberdash {
@@ -56,10 +56,7 @@ enum HatError {
 }
 
 impl IntoTwirpResponse for HatError {
-    fn into_twirp_response(self) -> http::Response<Body> {
-        // Note: When converting a HatError to a response, since we want the server to be a twirp
-        // server, it's important to generate a response that follows the twirp standard. We do
-        // that here by using TwirpErrorResponse.
+    fn into_twirp_response(self) -> http::Response<TwirpErrorResponse> {
         match self {
             HatError::InvalidSize => invalid_argument("inches").into_twirp_response(),
         }

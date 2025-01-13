@@ -17,11 +17,11 @@ pub trait IntoTwirpResponse {
     /// ```
     /// use axum::body::Body;
     /// use http::Response;
-    /// use twirp::IntoTwirpResponse;
+    /// use twirp::{TwirpErrorResponse, IntoTwirpResponse};
     /// # struct MyError { message: String }
     ///
     /// impl IntoTwirpResponse for MyError {
-    ///     fn into_twirp_response(self) -> Response<Body> {
+    ///     fn into_twirp_response(self) -> Response<TwirpErrorResponse> {
     ///         // Use TwirpErrorResponse to generate a valid starting point
     ///         let mut response = twirp::invalid_argument(&self.message)
     ///             .into_twirp_response();
@@ -35,7 +35,7 @@ pub trait IntoTwirpResponse {
     ///
     /// The `Response` that `TwirpErrorResponse` generates can be used as a starting point,
     /// adding headers and extensions to it.
-    fn into_twirp_response(self) -> Response<Body>;
+    fn into_twirp_response(self) -> Response<TwirpErrorResponse>;
 }
 
 /// Alias for a generic error
@@ -182,26 +182,30 @@ impl TwirpErrorResponse {
     pub fn insert_meta(&mut self, key: String, value: String) -> Option<String> {
         self.meta.insert(key, value)
     }
-}
 
-impl IntoTwirpResponse for TwirpErrorResponse {
-    fn into_twirp_response(self) -> Response<Body> {
-        IntoResponse::into_response(self)
+    pub fn into_axum_body(self) -> Body {
+        let json =
+            serde_json::to_string(&self).expect("JSON serialization of an error should not fail");
+        Body::new(json)
     }
 }
 
-impl IntoResponse for TwirpErrorResponse {
-    fn into_response(self) -> Response<Body> {
+impl IntoTwirpResponse for TwirpErrorResponse {
+    fn into_twirp_response(self) -> Response<TwirpErrorResponse> {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::CONTENT_TYPE,
             HeaderValue::from_static("application/json"),
         );
 
-        let json =
-            serde_json::to_string(&self).expect("JSON serialization of an error should not fail");
+        let code = self.code.http_status_code();
+        (code, headers).into_response().map(|_| self)
+    }
+}
 
-        (self.code.http_status_code(), headers, json).into_response()
+impl IntoResponse for TwirpErrorResponse {
+    fn into_response(self) -> Response<Body> {
+        self.into_twirp_response().map(|err| err.into_axum_body())
     }
 }
 
