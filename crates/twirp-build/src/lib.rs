@@ -28,10 +28,11 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         //
         writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
         writeln!(buf, "pub trait {} {{", service_name).unwrap();
+        writeln!(buf, "    type Error;").unwrap();
         for m in &service.methods {
             writeln!(
                 buf,
-                "    async fn {}(&self, ctx: twirp::Context, req: {}) -> Result<{}, twirp::TwirpErrorResponse>;",
+                "    async fn {}(&self, ctx: twirp::Context, req: {}) -> Result<{}, Self::Error>;",
                 m.name, m.input_type, m.output_type,
             )
             .unwrap();
@@ -43,10 +44,11 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         writeln!(buf, "where").unwrap();
         writeln!(buf, "    T: {service_name} + Sync + Send").unwrap();
         writeln!(buf, "{{").unwrap();
+        writeln!(buf, "    type Error = T::Error;\n").unwrap();
         for m in &service.methods {
             writeln!(
                 buf,
-                "    async fn {}(&self, ctx: twirp::Context, req: {}) -> Result<{}, twirp::TwirpErrorResponse> {{",
+                "    async fn {}(&self, ctx: twirp::Context, req: {}) -> Result<{}, Self::Error> {{",
                 m.name, m.input_type, m.output_type,
             )
                 .unwrap();
@@ -61,6 +63,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             r#"pub fn router<T>(api: T) -> twirp::Router
 where
     T: {service_name} + Clone + Send + Sync + 'static,
+    <T as {service_name}>::Error: twirp::IntoTwirpResponse,
 {{
     twirp::details::TwirpRouterBuilder::new(api)"#,
         )

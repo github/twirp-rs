@@ -303,10 +303,9 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "integration"]
     async fn test_standard_client() {
-        let h = run_test_server(3001).await;
-        let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
+        let h = run_test_server(3002).await;
+        let base_url = Url::parse("http://localhost:3002/twirp/").unwrap();
         let client = Client::from_base_url(base_url).unwrap();
         let resp = client
             .ping(PingRequest {

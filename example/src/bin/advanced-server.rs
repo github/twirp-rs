@@ -1,3 +1,5 @@
+//! This example is like simple-server but uses middleware and a custom error type.
+
 use std::net::SocketAddr;
 use std::time::UNIX_EPOCH;
 
@@ -6,7 +8,7 @@ use twirp::axum::body::Body;
 use twirp::axum::http;
 use twirp::axum::middleware::{self, Next};
 use twirp::axum::routing::get;
-use twirp::{invalid_argument, Context, Router, TwirpErrorResponse};
+use twirp::{invalid_argument, Context, IntoTwirpResponse, Router, TwirpErrorResponse};
 
 pub mod service {
     pub mod haberdash {
@@ -48,15 +50,30 @@ pub async fn main() {
 #[derive(Clone)]
 struct HaberdasherApiServer;
 
+#[derive(Debug, PartialEq)]
+enum HatError {
+    InvalidSize,
+}
+
+impl IntoTwirpResponse for HatError {
+    fn into_twirp_response(self) -> http::Response<TwirpErrorResponse> {
+        match self {
+            HatError::InvalidSize => invalid_argument("inches").into_twirp_response(),
+        }
+    }
+}
+
 #[async_trait]
 impl haberdash::HaberdasherApi for HaberdasherApiServer {
+    type Error = HatError;
+
     async fn make_hat(
         &self,
         ctx: Context,
         req: MakeHatRequest,
-    ) -> Result<MakeHatResponse, TwirpErrorResponse> {
+    ) -> Result<MakeHatResponse, HatError> {
         if req.inches == 0 {
-            return Err(invalid_argument("inches"));
+            return Err(HatError::InvalidSize);
         }
 
         if let Some(id) = ctx.get::<RequestId>() {
@@ -118,7 +135,6 @@ mod test {
     use service::haberdash::v1::HaberdasherApiClient;
     use twirp::client::Client;
     use twirp::url::Url;
-    use twirp::TwirpErrorCode;
 
     use crate::service::haberdash::v1::HaberdasherApi;
 
@@ -141,7 +157,7 @@ mod test {
         let res = api.make_hat(ctx, MakeHatRequest { inches: 0 }).await;
         assert!(res.is_err());
         let err = res.unwrap_err();
-        assert_eq!(err.code, TwirpErrorCode::InvalidArgument);
+        assert_eq!(err, HatError::InvalidSize);
     }
 
     /// A running network server task, bound to an arbitrary port on localhost, chosen by the OS
