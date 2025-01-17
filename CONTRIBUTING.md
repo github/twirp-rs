@@ -41,22 +41,15 @@ cargo build && cargo test
 Run clippy and fix any lints:
 
 ```sh
-cargo fmt --all -- --check
-cargo clippy -- --deny warnings -D clippy::unwrap_used
-cargo clippy --tests -- --deny warnings -A clippy::unwrap_used
+make lint
 ```
 
-## Releasing (write access required)
+## Releasing
 
-If you are one of the maintainers of this package then follow this process:
-
-1. Create a PR for this release with following changes:
-  - Updated `CHANGELOG.md` with desired change comments and ensure that it has the version to be released with date at the top.
-  - Go through all recent PRs and make sure they are properly accounted for.
-  - Make sure all changelog entries have links back to their PR(s) if appropriate.
-  - Update package version in Cargo.toml.
-1. Get an approval and merge your PR.
-1. Run ./script/publish from the `main` branch supplying your token and version information.
+1. Go to the `Create Release PR` action and press the button to run the action. This will use `release-plz` to create a new release PR.
+1. Adjust the generated changelog and version number(s) as necessary.
+1. Get PR approval
+1. Merge the PR. The `publish-release.yml` workflow will automatically publish a new release of any crate whose version has changed.
 
 ## Resources
 

@@ -1,13 +1,18 @@
 [package]
 name = "twirp-build"
 version = "0.7.0"
-authors = ["The blackbird team <support@github.com>"]
 edition = "2021"
 description = "Code generation for async-compatible Twirp RPC interfaces."
 readme = "README.md"
-keywords = ["twirp"]
-categories = ["network-programming"]
+keywords = ["twirp", "prost", "protocol-buffers"]
+categories = [
+    "development-tools::build-utils",
+    "network-programming",
+    "asynchronous",
+]
 repository = "https://github.com/github/twirp-rs"
+license = "MIT"
+license-file = "./LICENSE"
 
 [dependencies]
 prost-build = "0.13"
