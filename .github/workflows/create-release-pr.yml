@@ -7,10 +7,9 @@ permissions:
 on: workflow_dispatch
 
 jobs:
-
-# Create a PR with the new versions and changelog, preparing the next release. When merged to main,
-# the publish-release.yml workflow will automatically publish any Rust package versions.
-create-release-pr:
+  # Create a PR with the new versions and changelog, preparing the next release. When merged to main,
+  # the publish-release.yml workflow will automatically publish any Rust package versions.
+  create-release-pr:
     name: Create release PR
     runs-on: ubuntu-latest
     permissions:
