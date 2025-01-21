@@ -21,5 +21,13 @@ prost-build = "0.13"
 prost-wkt-build = "0.6"
 
 [[bin]]
-name = "example-client"
-path = "src/bin/example-client.rs"
+name = "client"
+path = "src/bin/client.rs"
+
+[[bin]]
+name = "simple-server"
+path = "src/bin/simple-server.rs"
+
+[[bin]]
+name = "advanced-server"
+path = "src/bin/advanced-server.rs"
