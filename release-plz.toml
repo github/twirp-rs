@@ -1,0 +1,6 @@
+[workspace]
+release_always = false
+
+[[package]]
+name = "example" # Ignore the example crate
+release = false
