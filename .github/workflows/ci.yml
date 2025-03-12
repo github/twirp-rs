@@ -6,6 +6,10 @@ on:
   pull_request:
   merge_group:
 
+permissions:
+  contents: read
+  packages: read
+
 env:
   CARGO_TERM_COLOR: always
 
