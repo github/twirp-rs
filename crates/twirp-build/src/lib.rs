@@ -93,11 +93,7 @@ where
         //
         writeln!(buf).unwrap();
         writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
-        writeln!(
-            buf,
-            "pub trait {service_name}Client: Send + Sync + std::fmt::Debug {{",
-        )
-        .unwrap();
+        writeln!(buf, "pub trait {service_name}Client: Send + Sync {{",).unwrap();
         for m in &service.methods {
             // Define: <METHOD>
             writeln!(
