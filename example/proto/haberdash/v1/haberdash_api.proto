@@ -9,6 +9,7 @@ option go_package = "haberdash.v1";
 service HaberdasherAPI {
   // MakeHat produces a hat of mysterious, randomly-selected color!
   rpc MakeHat(MakeHatRequest) returns (MakeHatResponse);
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
 }
 
 // Size is passed when requesting a new hat to be made. It's always
@@ -31,4 +32,10 @@ message MakeHatResponse {
 
   // Demonstrate importing an external message.
   google.protobuf.Timestamp timestamp = 4;
+}
+
+message GetStatusRequest {
+}
+
+message GetStatusResponse {
 }
