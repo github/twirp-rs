@@ -12,7 +12,9 @@ pub mod service {
     }
 }
 
-use service::haberdash::v1::{HaberdasherApiClient, MakeHatRequest, MakeHatResponse};
+use service::haberdash::v1::{
+    GetStatusRequest, GetStatusResponse, HaberdasherApiClient, MakeHatRequest, MakeHatResponse,
+};
 
 #[tokio::main]
 pub async fn main() -> Result<(), GenericError> {
@@ -77,6 +79,13 @@ impl HaberdasherApiClient for MockHaberdasherApiClient {
         &self,
         _req: MakeHatRequest,
     ) -> Result<MakeHatResponse, twirp::client::ClientError> {
+        todo!()
+    }
+
+    async fn get_status(
+        &self,
+        _req: GetStatusRequest,
+    ) -> Result<GetStatusResponse, twirp::client::ClientError> {
         todo!()
     }
 }
