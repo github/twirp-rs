@@ -17,7 +17,9 @@ pub mod service {
         }
     }
 }
-use service::haberdash::v1::{self as haberdash, MakeHatRequest, MakeHatResponse};
+use service::haberdash::v1::{
+    self as haberdash, GetStatusRequest, GetStatusResponse, MakeHatRequest, MakeHatResponse,
+};
 
 async fn ping() -> &'static str {
     "Pong\n"
@@ -93,6 +95,16 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
                 seconds: ts.as_secs() as i64,
                 nanos: 0,
             }),
+        })
+    }
+
+    async fn get_status(
+        &self,
+        _ctx: Context,
+        _req: GetStatusRequest,
+    ) -> Result<GetStatusResponse, HatError> {
+        Ok(GetStatusResponse {
+            status: "making hats".to_string(),
         })
     }
 }

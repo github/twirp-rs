@@ -16,3 +16,7 @@ license-file = "./LICENSE"
 
 [dependencies]
 prost-build = "0.13"
+prettyplease = { version = "0.2" }
+quote = "1.0"
+syn = "2.0"
+proc-macro2 = "1.0"

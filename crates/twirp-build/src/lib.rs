@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use quote::{format_ident, quote};
 
 /// Generates twirp services for protobuf rpc service definitions.
 ///
@@ -11,123 +11,205 @@ pub fn service_generator() -> Box<ServiceGenerator> {
     Box::new(ServiceGenerator {})
 }
 
+struct Service {
+    /// The name of the server trait, as parsed into a Rust identifier.
+    server_name: syn::Ident,
+
+    /// The name of the client trait, as parsed into a Rust identifier.
+    client_name: syn::Ident,
+
+    /// The fully qualified protobuf name of this Service.
+    fqn: String,
+
+    /// The methods that make up this service.
+    methods: Vec<Method>,
+}
+
+struct Method {
+    /// The name of the method, as parsed into a Rust identifier.
+    name: syn::Ident,
+
+    /// The name of the method as it appears in the protobuf definition.
+    proto_name: String,
+
+    /// The input type of this method.
+    input_type: syn::Type,
+
+    /// The output type of this method.
+    output_type: syn::Type,
+}
+
+impl Service {
+    fn from_prost(s: prost_build::Service) -> Self {
+        let fqn = format!("{}.{}", s.package, s.proto_name);
+        let server_name = format_ident!("{}", &s.name);
+        let client_name = format_ident!("{}Client", &s.name);
+        let methods = s
+            .methods
+            .into_iter()
+            .map(|m| Method::from_prost(&s.package, &s.proto_name, m))
+            .collect();
+
+        Self {
+            server_name,
+            client_name,
+            fqn,
+            methods,
+        }
+    }
+}
+
+impl Method {
+    fn from_prost(pkg_name: &str, svc_name: &str, m: prost_build::Method) -> Self {
+        let as_type = |s| -> syn::Type {
+            let Ok(typ) = syn::parse_str::<syn::Type>(s) else {
+                panic!(
+                    "twirp-build failed generated invalid Rust while processing {pkg}.{svc}/{name}). this is a bug in twirp-build, please file a GitHub issue",
+                    pkg = pkg_name,
+                    svc = svc_name,
+                    name = m.proto_name,
+                );
+            };
+            typ
+        };
+
+        let input_type = as_type(&m.input_type);
+        let output_type = as_type(&m.output_type);
+        let name = format_ident!("{}", m.name);
+        let message = m.proto_name;
+
+        Self {
+            name,
+            proto_name: message,
+            input_type,
+            output_type,
+        }
+    }
+}
+
 pub struct ServiceGenerator;
 
 impl prost_build::ServiceGenerator for ServiceGenerator {
     fn generate(&mut self, service: prost_build::Service, buf: &mut String) {
-        let service_name = service.name;
-        let service_fqn = format!("{}.{}", service.package, service.proto_name);
-        writeln!(buf).unwrap();
+        let service = Service::from_prost(service);
 
-        writeln!(buf, "pub use twirp;").unwrap();
-        writeln!(buf).unwrap();
-        writeln!(buf, "pub const SERVICE_FQN: &str = \"/{service_fqn}\";").unwrap();
-
-        //
         // generate the twirp server
-        //
-        writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
-        writeln!(buf, "pub trait {} {{", service_name).unwrap();
-        writeln!(buf, "    type Error;").unwrap();
+        let mut trait_methods = Vec::with_capacity(service.methods.len());
+        let mut proxy_methods = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
-            writeln!(
-                buf,
-                "    async fn {}(&self, ctx: twirp::Context, req: {}) -> Result<{}, Self::Error>;",
-                m.name, m.input_type, m.output_type,
-            )
-            .unwrap();
-        }
-        writeln!(buf, "}}").unwrap();
+            let name = &m.name;
+            let input_type = &m.input_type;
+            let output_type = &m.output_type;
 
-        writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
-        writeln!(buf, "impl<T> {service_name} for std::sync::Arc<T>").unwrap();
-        writeln!(buf, "where").unwrap();
-        writeln!(buf, "    T: {service_name} + Sync + Send").unwrap();
-        writeln!(buf, "{{").unwrap();
-        writeln!(buf, "    type Error = T::Error;\n").unwrap();
-        for m in &service.methods {
-            writeln!(
-                buf,
-                "    async fn {}(&self, ctx: twirp::Context, req: {}) -> Result<{}, Self::Error> {{",
-                m.name, m.input_type, m.output_type,
-            )
-                .unwrap();
-            writeln!(buf, "        T::{}(&*self, ctx, req).await", m.name).unwrap();
-            writeln!(buf, "    }}").unwrap();
-        }
-        writeln!(buf, "}}").unwrap();
+            trait_methods.push(quote! {
+                async fn #name(&self, ctx: twirp::Context, req: #input_type) -> Result<#output_type, Self::Error>;
+            });
 
-        // add_service
-        writeln!(
-            buf,
-            r#"pub fn router<T>(api: T) -> twirp::Router
-where
-    T: {service_name} + Clone + Send + Sync + 'static,
-    <T as {service_name}>::Error: twirp::IntoTwirpResponse,
-{{
-    twirp::details::TwirpRouterBuilder::new(api)"#,
-        )
-        .unwrap();
-        for m in &service.methods {
-            let uri = &m.proto_name;
-            let req_type = &m.input_type;
-            let rust_method_name = &m.name;
-            writeln!(
-                buf,
-                r#"        .route("/{uri}", |api: T, ctx: twirp::Context, req: {req_type}| async move {{
-            api.{rust_method_name}(ctx, req).await
-        }})"#,
-            )
-            .unwrap();
+            proxy_methods.push(quote! {
+                async fn #name(&self, ctx: twirp::Context, req: #input_type) -> Result<#output_type, Self::Error> {
+                    T::#name(&*self, ctx, req).await
+                }
+            });
         }
-        writeln!(
-            buf,
-            r#"
-        .build()
-}}"#
-        )
-        .unwrap();
+
+        let server_name = &service.server_name;
+        let server_trait = quote! {
+            #[twirp::async_trait::async_trait]
+            pub trait #server_name {
+                type Error;
+
+                #(#trait_methods)*
+            }
+
+            #[twirp::async_trait::async_trait]
+            impl<T> #server_name for std::sync::Arc<T>
+            where
+                T: #server_name + Sync + Send
+            {
+                type Error = T::Error;
+
+                #(#proxy_methods)*
+            }
+        };
+
+        // generate the router
+        let mut route_calls = Vec::with_capacity(service.methods.len());
+        for m in &service.methods {
+            let name = &m.name;
+            let input_type = &m.input_type;
+            let path = format!("/{uri}", uri = m.proto_name);
+
+            route_calls.push(quote! {
+                .route(#path, |api: T, ctx: twirp::Context, req: #input_type| async move {
+                    api.#name(ctx, req).await
+                })
+            });
+        }
+        let router = quote! {
+            pub fn router<T>(api: T) -> twirp::Router
+                where
+                    T: #server_name + Clone + Send + Sync + 'static,
+                    <T as #server_name>::Error: twirp::IntoTwirpResponse
+                {
+                    twirp::details::TwirpRouterBuilder::new(api)
+                        #(#route_calls)*
+                        .build()
+                }
+        };
 
         //
         // generate the twirp client
         //
-        writeln!(buf).unwrap();
-        writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
-        writeln!(buf, "pub trait {service_name}Client: Send + Sync {{",).unwrap();
-        for m in &service.methods {
-            // Define: <METHOD>
-            writeln!(
-                buf,
-                "    async fn {}(&self, req: {}) -> Result<{}, twirp::ClientError>;",
-                m.name, m.input_type, m.output_type,
-            )
-            .unwrap();
-        }
-        writeln!(buf, "}}").unwrap();
 
-        // Implement the rpc traits for: `twirp::client::Client`
-        writeln!(buf, "#[twirp::async_trait::async_trait]").unwrap();
-        writeln!(
-            buf,
-            "impl {service_name}Client for twirp::client::Client {{",
-        )
-        .unwrap();
+        let client_name = service.client_name;
+        let mut client_trait_methods = Vec::with_capacity(service.methods.len());
+        let mut client_methods = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
-            // Define the rpc `<METHOD>`
-            writeln!(
-                buf,
-                "    async fn {}(&self, req: {}) -> Result<{}, twirp::ClientError> {{",
-                m.name, m.input_type, m.output_type,
-            )
-            .unwrap();
-            writeln!(
-                buf,
-                r#"    self.request("{}/{}", req).await"#,
-                service_fqn, m.proto_name
-            )
-            .unwrap();
-            writeln!(buf, "    }}").unwrap();
+            let name = &m.name;
+            let input_type = &m.input_type;
+            let output_type = &m.output_type;
+            let request_path = format!("{}/{}", service.fqn, m.proto_name);
+
+            client_trait_methods.push(quote! {
+                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError>;
+            });
+
+            client_methods.push(quote! {
+                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError> {
+                    self.request(#request_path, req).await
+                }
+            })
         }
-        writeln!(buf, "}}").unwrap();
+        let client_trait = quote! {
+            #[twirp::async_trait::async_trait]
+            pub trait #client_name: Send + Sync {
+                #(#client_trait_methods)*
+            }
+
+            #[twirp::async_trait::async_trait]
+            impl #client_name for twirp::client::Client {
+                #(#client_methods)*
+            }
+        };
+
+        // generate the service and client as a single file. run it through
+        // prettyplease before outputting it.
+        let service_fqn_path = format!("/{}", service.fqn);
+        let generated = quote! {
+            pub use twirp;
+
+            pub const SERVICE_FQN: &str = #service_fqn_path;
+
+            #server_trait
+
+            #router
+
+            #client_trait
+        };
+
+        let ast: syn::File = syn::parse2(generated)
+            .expect("twirp-build generated invalid Rust. this is a bug in twirp-build, please file an issue");
+        let code = prettyplease::unparse(&ast);
+        buf.push_str(&code);
     }
 }
