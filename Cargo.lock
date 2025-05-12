@@ -873,9 +873,9 @@ dependencies = [
 
 [[package]]
 name = "prost-wkt-types"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01ef068e9b82e654614b22e6b13699bd545b6c0e2e721736008b00b38aeb4f64"
+checksum = "c8cdde6df0a98311c839392ca2f2f0bcecd545f86a62b4e3c6a49c336e970fe5"
 dependencies = [
  "chrono",
  "prost",
