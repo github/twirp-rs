@@ -24,7 +24,7 @@ fi
 echo "Installing protoc..."
 
 # Download protoc
-protoc_version="3.17.0"
+protoc_version="21.0"
 protoc_os="osx-x86_64"
 if [[ $OSTYPE == linux* ]]; then
     protoc_os="linux-x86_64"
