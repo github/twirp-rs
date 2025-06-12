@@ -3,7 +3,7 @@ use std::vec;
 
 use async_trait::async_trait;
 use reqwest::header::{InvalidHeaderValue, CONTENT_TYPE};
-use reqwest::StatusCode;
+use reqwest::{RequestBuilder, StatusCode};
 use thiserror::Error;
 use url::Url;
 
@@ -155,23 +155,31 @@ impl Client {
         }
     }
 
-    /// Make an HTTP twirp request.
-    pub async fn request<I, O>(&self, path: &str, body: I) -> Result<O>
+    pub fn build_request<I>(&self, path: &str, body: I) -> Result<RequestBuilder>
     where
         I: prost::Message,
-        O: prost::Message + Default,
     {
         let mut url = self.inner.base_url.join(path)?;
         if let Some(host) = &self.host {
             url.set_host(Some(host))?
         };
-        let path = url.path().to_string();
+
         let req = self
             .http_client
             .post(url)
             .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-            .body(serialize_proto_message(body))
-            .build()?;
+            .body(serialize_proto_message(body));
+        Ok(req)
+    }
+
+    /// Make an HTTP twirp request.
+    // pub async fn request<I, O>(&self, ctx: Context, path: &str, body: I) -> Result<O>
+    pub async fn make_request<O>(&self, builder: RequestBuilder) -> Result<O>
+    where
+        O: prost::Message + Default,
+    {
+        let req = builder.build()?;
+        let path = req.url().path().to_string();
 
         // Create and execute the middleware handlers
         let next = Next::new(&self.http_client, &self.inner.middlewares);
