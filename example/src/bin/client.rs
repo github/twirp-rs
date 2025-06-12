@@ -1,6 +1,6 @@
 use twirp::async_trait::async_trait;
 use twirp::client::{Client, ClientBuilder, Middleware, Next};
-use twirp::reqwest::{self, Request, Response};
+use twirp::reqwest::{Request, Response};
 use twirp::url::Url;
 use twirp::GenericError;
 
@@ -44,7 +44,7 @@ pub async fn main() -> Result<(), GenericError> {
         .build_make_hat(MakeHatRequest { inches: 1 })?
         .header("x-custom-header", "a");
     // Make a request with context
-    let resp: MakeHatResponse = client.request(req).await?;
+    let resp = client.request(req).await?;
     eprintln!("{:?}", resp);
 
     Ok(())
@@ -89,22 +89,32 @@ impl HaberdasherApiClient for MockHaberdasherApiClient {
     fn build_make_hat(
         &self,
         _req: MakeHatRequest,
-    ) -> Result<reqwest::RequestBuilder, twirp::ClientError> {
+    ) -> Result<twirp::RequestBuilder<MakeHatRequest, MakeHatResponse>, twirp::ClientError> {
         todo!()
     }
 
     fn build_get_status(
         &self,
         _req: GetStatusRequest,
-    ) -> Result<reqwest::RequestBuilder, twirp::ClientError> {
+    ) -> Result<twirp::RequestBuilder<GetStatusRequest, GetStatusResponse>, twirp::ClientError>
+    {
         todo!()
     }
 
-    async fn request<O>(
+    async fn request<I, O>(
         &self,
-        _req: reqwest::RequestBuilder,
+        _req: twirp::RequestBuilder<I, O>,
     ) -> Result<O, twirp::client::ClientError>
     where
+        I: prost::Message,
+        O: prost::Message + Default,
+    {
+        todo!()
+    }
+
+    fn build<I, O>(&self, _req: I) -> Result<twirp::RequestBuilder<I, O>, twirp::ClientError>
+    where
+        I: prost::Message,
         O: prost::Message + Default,
     {
         todo!()

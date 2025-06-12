@@ -165,16 +165,35 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let mut client_trait_methods = Vec::with_capacity(service.methods.len());
         let mut client_methods = Vec::with_capacity(service.methods.len());
         client_trait_methods.push(quote! {
-            async fn request<O>(&self, req: twirp::reqwest::RequestBuilder) -> Result<O, twirp::ClientError> where O: prost::Message + Default;
+            async fn request<I, O>(&self, req: twirp::RequestBuilder<I, O>) -> Result<O, twirp::ClientError>
+            where
+                I: prost::Message,
+                O: prost::Message + Default;
+        });
+        client_trait_methods.push(quote! {
+            fn build<I, O>(&self, req: I) -> Result<twirp::RequestBuilder<I, O>, twirp::ClientError>
+            where
+                I: prost::Message,
+                O: prost::Message + Default;
         });
         client_methods.push(quote! {
-            async fn request<O>(&self, req: twirp::reqwest::RequestBuilder) -> Result<O, twirp::ClientError> where O: prost::Message + Default {
+            async fn request<I, O>(&self, req: twirp::RequestBuilder<I, O>) -> Result<O, twirp::ClientError>
+            where
+                I: prost::Message,
+                O: prost::Message + Default {
                 self.make_request(req).await
+            }
+        });
+        client_methods.push(quote! {
+            fn build<I, O>(&self, req: I) -> Result<twirp::RequestBuilder<I, O>, twirp::ClientError>
+            where
+                I: prost::Message,
+                O: prost::Message + Default {
+                    todo!()
             }
         });
         for m in &service.methods {
             let name = &m.name;
-            // let name_ext = format_ident!("{}_ext", name);
             let build_name = format_ident!("build_{}", name);
             let input_type = &m.input_type;
             let output_type = &m.output_type;
@@ -186,20 +205,12 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                     self.request(builder).await
                 }
             });
-            // client_trait_methods.push(quote! {
-            //     async fn #name_ext(&self, req: twirp::reqwest::RequestBuilder) -> Result<#output_type, twirp::ClientError>;
-            // });
             client_trait_methods.push(quote! {
-                fn #build_name(&self, req: #input_type) -> Result<twirp::reqwest::RequestBuilder, twirp::ClientError>;
+                fn #build_name(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError>;
             });
 
-            // client_methods.push(quote! {
-            //     async fn #name_ext(&self, req: twirp::reqwest::RequestBuilder) -> Result<#output_type, twirp::ClientError> {
-            //         self.request(req).await
-            //     }
-            // });
             client_methods.push(quote! {
-                fn #build_name(&self, req: #input_type) -> Result<twirp::reqwest::RequestBuilder, twirp::ClientError> {
+                fn #build_name(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError> {
                     self.build_request(#request_path, req)
                 }
             });

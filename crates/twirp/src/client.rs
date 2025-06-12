@@ -2,8 +2,9 @@ use std::sync::Arc;
 use std::vec;
 
 use async_trait::async_trait;
+use http::{HeaderName, HeaderValue};
 use reqwest::header::{InvalidHeaderValue, CONTENT_TYPE};
-use reqwest::{RequestBuilder, StatusCode};
+use reqwest::StatusCode;
 use thiserror::Error;
 use url::Url;
 
@@ -145,6 +146,8 @@ impl Client {
         &self.inner.base_url
     }
 
+    // TODO: Move this to the `ClientBuilder`
+    //
     /// Creates a new `twirp::Client` with the same configuration as the current
     /// one, but with a different host in the base URL.
     pub fn with_host(&self, host: &str) -> Self {
@@ -155,9 +158,10 @@ impl Client {
         }
     }
 
-    pub fn build_request<I>(&self, path: &str, body: I) -> Result<RequestBuilder>
+    pub fn build_request<I, O>(&self, path: &str, body: I) -> Result<RequestBuilder<I, O>>
     where
         I: prost::Message,
+        O: prost::Message + Default,
     {
         let mut url = self.inner.base_url.join(path)?;
         if let Some(host) = &self.host {
@@ -169,13 +173,14 @@ impl Client {
             .post(url)
             .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
             .body(serialize_proto_message(body));
-        Ok(req)
+        Ok(RequestBuilder::new(req))
     }
 
     /// Make an HTTP twirp request.
     // pub async fn request<I, O>(&self, ctx: Context, path: &str, body: I) -> Result<O>
-    pub async fn make_request<O>(&self, builder: RequestBuilder) -> Result<O>
+    pub async fn make_request<I, O>(&self, builder: RequestBuilder<I, O>) -> Result<O>
     where
+        I: prost::Message,
         O: prost::Message + Default,
     {
         let req = builder.build()?;
@@ -211,6 +216,39 @@ impl Client {
                     .unwrap_or_default(),
             }),
         }
+    }
+}
+
+pub struct RequestBuilder<I, O> {
+    inner: reqwest::RequestBuilder,
+    host: Option<String>,
+    _input: std::marker::PhantomData<I>,
+    _output: std::marker::PhantomData<O>,
+}
+
+impl<I, O> RequestBuilder<I, O> {
+    pub fn new(inner: reqwest::RequestBuilder) -> Self {
+        Self {
+            inner,
+            host: None,
+            _input: std::marker::PhantomData,
+            _output: std::marker::PhantomData,
+        }
+    }
+
+    pub fn header<K, V>(self, key: K, value: V) -> RequestBuilder<I, O>
+    where
+        HeaderName: TryFrom<K>,
+        <HeaderName as TryFrom<K>>::Error: Into<http::Error>,
+        HeaderValue: TryFrom<V>,
+        <HeaderValue as TryFrom<V>>::Error: Into<http::Error>,
+    {
+        RequestBuilder::new(self.inner.header(key, value))
+    }
+
+    /// Builds the request.
+    pub fn build(self) -> Result<reqwest::Request, reqwest::Error> {
+        self.inner.build()
     }
 }
 
