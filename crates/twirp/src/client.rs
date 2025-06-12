@@ -177,8 +177,7 @@ impl Client {
     }
 
     /// Make an HTTP twirp request.
-    // pub async fn request<I, O>(&self, ctx: Context, path: &str, body: I) -> Result<O>
-    pub async fn make_request<I, O>(&self, builder: RequestBuilder<I, O>) -> Result<O>
+    pub async fn request<I, O>(&self, builder: RequestBuilder<I, O>) -> Result<O>
     where
         I: prost::Message,
         O: prost::Message + Default,
@@ -221,7 +220,6 @@ impl Client {
 
 pub struct RequestBuilder<I, O> {
     inner: reqwest::RequestBuilder,
-    host: Option<String>,
     _input: std::marker::PhantomData<I>,
     _output: std::marker::PhantomData<O>,
 }
@@ -230,7 +228,6 @@ impl<I, O> RequestBuilder<I, O> {
     pub fn new(inner: reqwest::RequestBuilder) -> Self {
         Self {
             inner,
-            host: None,
             _input: std::marker::PhantomData,
             _output: std::marker::PhantomData,
         }

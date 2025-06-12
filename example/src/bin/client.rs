@@ -80,6 +80,8 @@ impl Middleware for PrintResponseHeaders {
 
 // NOTE: This is just to demonstrate manually implementing the client trait. You don't need to do this as this code will
 // be generated for you by twirp-build.
+//
+// This is here so that we can visualize changes to the generated client code
 #[allow(dead_code)]
 #[derive(Debug)]
 struct MockHaberdasherApiClient;
@@ -92,6 +94,9 @@ impl HaberdasherApiClient for MockHaberdasherApiClient {
     ) -> Result<twirp::RequestBuilder<MakeHatRequest, MakeHatResponse>, twirp::ClientError> {
         todo!()
     }
+    async fn make_hat(&self, _req: MakeHatRequest) -> Result<MakeHatResponse, twirp::ClientError> {
+        todo!()
+    }
 
     fn build_get_status(
         &self,
@@ -100,23 +105,10 @@ impl HaberdasherApiClient for MockHaberdasherApiClient {
     {
         todo!()
     }
-
-    async fn request<I, O>(
+    async fn get_status(
         &self,
-        _req: twirp::RequestBuilder<I, O>,
-    ) -> Result<O, twirp::client::ClientError>
-    where
-        I: prost::Message,
-        O: prost::Message + Default,
-    {
-        todo!()
-    }
-
-    fn build<I, O>(&self, _req: I) -> Result<twirp::RequestBuilder<I, O>, twirp::ClientError>
-    where
-        I: prost::Message,
-        O: prost::Message + Default,
-    {
+        _req: GetStatusRequest,
+    ) -> Result<GetStatusResponse, twirp::ClientError> {
         todo!()
     }
 }
