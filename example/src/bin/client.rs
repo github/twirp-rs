@@ -93,6 +93,7 @@ impl HaberdasherApiClient for MockHaberdasherApiClient {
     ) -> Result<twirp::RequestBuilder<MakeHatRequest, MakeHatResponse>, twirp::ClientError> {
         todo!()
     }
+    // implementing this one is optional
     async fn make_hat(&self, _req: MakeHatRequest) -> Result<MakeHatResponse, twirp::ClientError> {
         todo!()
     }
@@ -104,6 +105,7 @@ impl HaberdasherApiClient for MockHaberdasherApiClient {
     {
         todo!()
     }
+    // implementing this one is optional
     async fn get_status(
         &self,
         _req: GetStatusRequest,

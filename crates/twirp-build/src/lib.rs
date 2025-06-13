@@ -172,7 +172,9 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let request_path = format!("{}/{}", service.fqn, m.proto_name);
 
             client_trait_methods.push(quote! {
-                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError>;
+                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError> {
+                    self.#name_request(req)?.send().await
+                }
             });
             client_trait_methods.push(quote! {
                 fn #name_request(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError>;
@@ -181,11 +183,6 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             client_methods.push(quote! {
                 fn #name_request(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError> {
                     self.request(#request_path, req)
-                }
-            });
-            client_methods.push(quote! {
-                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError> {
-                    self.#name_request(req)?.send().await
                 }
             });
         }
