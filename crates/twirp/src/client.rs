@@ -146,8 +146,6 @@ impl Client {
         &self.inner.base_url
     }
 
-    // TODO: Move this to the `ClientBuilder`
-    //
     /// Creates a new `twirp::Client` with the same configuration as the current
     /// one, but with a different host in the base URL.
     pub fn with_host(&self, host: &str) -> Self {
@@ -158,6 +156,7 @@ impl Client {
         }
     }
 
+    /// Executes a `Request`.
     pub(super) async fn execute<O>(&self, req: reqwest::Request) -> Result<O>
     where
         O: prost::Message + Default,
@@ -239,6 +238,7 @@ where
         }
     }
 
+    /// Add a `Header` to this Request.
     pub fn header<K, V>(mut self, key: K, value: V) -> RequestBuilder<I, O>
     where
         HeaderName: TryFrom<K>,
