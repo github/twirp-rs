@@ -146,8 +146,6 @@ impl Client {
         &self.inner.base_url
     }
 
-    // TODO: Move this to the `ClientBuilder`
-    //
     /// Creates a new `twirp::Client` with the same configuration as the current
     /// one, but with a different host in the base URL.
     pub fn with_host(&self, host: &str) -> Self {
@@ -195,9 +193,10 @@ impl Client {
             }),
         }
     }
+}
 
-    // Start building a request...
-    pub fn request<I, O>(&self, path: &str, body: I) -> Result<RequestBuilder<I, O>>
+impl TwirpRequest for Client {
+    fn request<I, O>(&self, path: &str, body: I) -> Result<RequestBuilder<I, O>>
     where
         I: prost::Message,
         O: prost::Message + Default,
@@ -214,6 +213,13 @@ impl Client {
             .body(serialize_proto_message(body));
         Ok(RequestBuilder::new(self.clone(), req))
     }
+}
+
+pub trait TwirpRequest {
+    fn request<I, O>(&self, path: &str, body: I) -> Result<RequestBuilder<I, O>>
+    where
+        I: prost::Message,
+        O: prost::Message + Default;
 }
 
 pub struct RequestBuilder<I, O>
@@ -239,6 +245,7 @@ where
         }
     }
 
+    /// Add a `Header` to this Request.
     pub fn header<K, V>(mut self, key: K, value: V) -> RequestBuilder<I, O>
     where
         HeaderName: TryFrom<K>,

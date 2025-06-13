@@ -10,7 +10,9 @@ pub mod test;
 #[doc(hidden)]
 pub mod details;
 
-pub use client::{Client, ClientBuilder, ClientError, Middleware, Next, RequestBuilder, Result};
+pub use client::{
+    Client, ClientBuilder, ClientError, Middleware, Next, RequestBuilder, Result, TwirpRequest,
+};
 pub use context::Context;
 pub use error::*; // many constructors like `invalid_argument()`
 pub use http::Extensions;

@@ -13,7 +13,7 @@ use tokio::time::Instant;
 
 use crate::details::TwirpRouterBuilder;
 use crate::server::Timings;
-use crate::{error, Client, Context, Result, TwirpErrorResponse};
+use crate::{error, Client, Context, Result, TwirpErrorResponse, TwirpRequest};
 
 pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), std::io::Error>> {
     let router = test_api_router();

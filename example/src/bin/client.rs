@@ -2,7 +2,7 @@ use twirp::async_trait::async_trait;
 use twirp::client::{Client, ClientBuilder, Middleware, Next};
 use twirp::reqwest::{Request, Response};
 use twirp::url::Url;
-use twirp::GenericError;
+use twirp::{GenericError, RequestBuilder, TwirpRequest};
 
 pub mod service {
     pub mod haberdash {
@@ -84,6 +84,20 @@ impl Middleware for PrintResponseHeaders {
 #[allow(dead_code)]
 #[derive(Debug)]
 struct MockHaberdasherApiClient;
+
+impl TwirpRequest for MockHaberdasherApiClient {
+    fn request<I, O>(
+        &self,
+        _path: &str,
+        _body: I,
+    ) -> Result<RequestBuilder<I, O>, twirp::ClientError>
+    where
+        I: prost::Message,
+        O: prost::Message + Default,
+    {
+        todo!()
+    }
+}
 
 #[async_trait]
 impl HaberdasherApiClient for MockHaberdasherApiClient {
