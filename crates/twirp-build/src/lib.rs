@@ -166,19 +166,25 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let mut client_methods = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
             let name = &m.name;
+            let name_request = format_ident!("{}_request", name);
             let input_type = &m.input_type;
             let output_type = &m.output_type;
             let request_path = format!("{}/{}", service.fqn, m.proto_name);
 
             client_trait_methods.push(quote! {
-                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError>;
+                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError> {
+                    self.#name_request(req)?.send().await
+                }
+            });
+            client_trait_methods.push(quote! {
+                fn #name_request(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError>;
             });
 
             client_methods.push(quote! {
-                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError> {
-                    self.request(#request_path, req).await
+                fn #name_request(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError> {
+                    self.request(#request_path, req)
                 }
-            })
+            });
         }
         let client_trait = quote! {
             #[twirp::async_trait::async_trait]

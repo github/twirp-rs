@@ -38,6 +38,14 @@ pub async fn main() -> Result<(), GenericError> {
         .await;
     eprintln!("{:?}", resp);
 
+    let resp = client
+        .with_host("localhost")
+        .make_hat_request(MakeHatRequest { inches: 1 })?
+        .header("x-custom-header", "a")
+        .send()
+        .await?;
+    eprintln!("{:?}", resp);
+
     Ok(())
 }
 
@@ -69,23 +77,39 @@ impl Middleware for PrintResponseHeaders {
     }
 }
 
+// NOTE: This is just to demonstrate manually implementing the client trait. You don't need to do this as this code will
+// be generated for you by twirp-build.
+//
+// This is here so that we can visualize changes to the generated client code
 #[allow(dead_code)]
 #[derive(Debug)]
 struct MockHaberdasherApiClient;
 
 #[async_trait]
 impl HaberdasherApiClient for MockHaberdasherApiClient {
-    async fn make_hat(
+    fn make_hat_request(
         &self,
         _req: MakeHatRequest,
-    ) -> Result<MakeHatResponse, twirp::client::ClientError> {
+    ) -> Result<twirp::RequestBuilder<MakeHatRequest, MakeHatResponse>, twirp::ClientError> {
+        todo!()
+    }
+    // implementing this one is optional
+    async fn make_hat(&self, _req: MakeHatRequest) -> Result<MakeHatResponse, twirp::ClientError> {
         todo!()
     }
 
+    fn get_status_request(
+        &self,
+        _req: GetStatusRequest,
+    ) -> Result<twirp::RequestBuilder<GetStatusRequest, GetStatusResponse>, twirp::ClientError>
+    {
+        todo!()
+    }
+    // implementing this one is optional
     async fn get_status(
         &self,
         _req: GetStatusRequest,
-    ) -> Result<GetStatusResponse, twirp::client::ClientError> {
+    ) -> Result<GetStatusResponse, twirp::ClientError> {
         todo!()
     }
 }
