@@ -195,7 +195,9 @@ impl Client {
         }
     }
 
-    // Start building a request...
+    /// Start building a `Request` with a path and a request body.
+    ///
+    /// Returns a `RequestBuilder`, which will allow setting headers before sending.
     pub fn request<I, O>(&self, path: &str, body: I) -> Result<RequestBuilder<I, O>>
     where
         I: prost::Message,
