@@ -166,7 +166,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let mut client_methods = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
             let name = &m.name;
-            let build_name = format_ident!("build_{}", name);
+            let name_request = format_ident!("{}_request", name);
             let input_type = &m.input_type;
             let output_type = &m.output_type;
             let request_path = format!("{}/{}", service.fqn, m.proto_name);
@@ -175,18 +175,17 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError>;
             });
             client_trait_methods.push(quote! {
-                fn #build_name(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError>;
+                fn #name_request(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError>;
             });
 
             client_methods.push(quote! {
-                fn #build_name(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError> {
-                    self.build_request(#request_path, req)
+                fn #name_request(&self, req: #input_type) -> Result<twirp::RequestBuilder<#input_type, #output_type>, twirp::ClientError> {
+                    self.request(#request_path, req)
                 }
             });
             client_methods.push(quote! {
                 async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError> {
-                    let builder = self.#build_name(req)?;
-                    self.request(builder).await
+                    self.#name_request(req)?.send().await
                 }
             });
         }

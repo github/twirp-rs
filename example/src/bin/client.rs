@@ -38,13 +38,12 @@ pub async fn main() -> Result<(), GenericError> {
         .await;
     eprintln!("{:?}", resp);
 
-    // TODO: Figure out where `with_host` goes in all this...
-    let req = client
+    let resp = client
         .with_host("localhost")
-        .build_make_hat(MakeHatRequest { inches: 1 })?
-        .header("x-custom-header", "a");
-    // Make a request with context
-    let resp = client.request(req).await?;
+        .make_hat_request(MakeHatRequest { inches: 1 })?
+        .header("x-custom-header", "a")
+        .send()
+        .await?;
     eprintln!("{:?}", resp);
 
     Ok(())
@@ -88,7 +87,7 @@ struct MockHaberdasherApiClient;
 
 #[async_trait]
 impl HaberdasherApiClient for MockHaberdasherApiClient {
-    fn build_make_hat(
+    fn make_hat_request(
         &self,
         _req: MakeHatRequest,
     ) -> Result<twirp::RequestBuilder<MakeHatRequest, MakeHatResponse>, twirp::ClientError> {
@@ -98,7 +97,7 @@ impl HaberdasherApiClient for MockHaberdasherApiClient {
         todo!()
     }
 
-    fn build_get_status(
+    fn get_status_request(
         &self,
         _req: GetStatusRequest,
     ) -> Result<twirp::RequestBuilder<GetStatusRequest, GetStatusResponse>, twirp::ClientError>

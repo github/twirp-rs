@@ -158,31 +158,10 @@ impl Client {
         }
     }
 
-    pub fn build_request<I, O>(&self, path: &str, body: I) -> Result<RequestBuilder<I, O>>
+    pub(super) async fn execute<O>(&self, req: reqwest::Request) -> Result<O>
     where
-        I: prost::Message,
         O: prost::Message + Default,
     {
-        let mut url = self.inner.base_url.join(path)?;
-        if let Some(host) = &self.host {
-            url.set_host(Some(host))?
-        };
-
-        let req = self
-            .http_client
-            .post(url)
-            .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-            .body(serialize_proto_message(body));
-        Ok(RequestBuilder::new(req))
-    }
-
-    /// Make an HTTP twirp request.
-    pub async fn request<I, O>(&self, builder: RequestBuilder<I, O>) -> Result<O>
-    where
-        I: prost::Message,
-        O: prost::Message + Default,
-    {
-        let req = builder.build()?;
         let path = req.url().path().to_string();
 
         // Create and execute the middleware handlers
@@ -216,36 +195,64 @@ impl Client {
             }),
         }
     }
+
+    // Start building a request...
+    pub fn request<I, O>(&self, path: &str, body: I) -> Result<RequestBuilder<I, O>>
+    where
+        I: prost::Message,
+        O: prost::Message + Default,
+    {
+        let mut url = self.inner.base_url.join(path)?;
+        if let Some(host) = &self.host {
+            url.set_host(Some(host))?
+        };
+
+        let req = self
+            .http_client
+            .post(url)
+            .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
+            .body(serialize_proto_message(body));
+        Ok(RequestBuilder::new(self.clone(), req))
+    }
 }
 
-pub struct RequestBuilder<I, O> {
+pub struct RequestBuilder<I, O>
+where
+    O: prost::Message + Default,
+{
+    client: Client,
     inner: reqwest::RequestBuilder,
     _input: std::marker::PhantomData<I>,
     _output: std::marker::PhantomData<O>,
 }
 
-impl<I, O> RequestBuilder<I, O> {
-    pub fn new(inner: reqwest::RequestBuilder) -> Self {
+impl<I, O> RequestBuilder<I, O>
+where
+    O: prost::Message + Default,
+{
+    pub fn new(client: Client, inner: reqwest::RequestBuilder) -> Self {
         Self {
+            client,
             inner,
             _input: std::marker::PhantomData,
             _output: std::marker::PhantomData,
         }
     }
 
-    pub fn header<K, V>(self, key: K, value: V) -> RequestBuilder<I, O>
+    pub fn header<K, V>(mut self, key: K, value: V) -> RequestBuilder<I, O>
     where
         HeaderName: TryFrom<K>,
         <HeaderName as TryFrom<K>>::Error: Into<http::Error>,
         HeaderValue: TryFrom<V>,
         <HeaderValue as TryFrom<V>>::Error: Into<http::Error>,
     {
-        RequestBuilder::new(self.inner.header(key, value))
+        self.inner = self.inner.header(key, value);
+        self
     }
 
-    /// Builds the request.
-    pub fn build(self) -> Result<reqwest::Request, reqwest::Error> {
-        self.inner.build()
+    pub async fn send(self) -> Result<O> {
+        let req = self.inner.build()?;
+        self.client.execute(req).await
     }
 }
 
