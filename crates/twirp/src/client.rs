@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::vec;
 
 use async_trait::async_trait;
+use http::{HeaderName, HeaderValue};
 use reqwest::header::{InvalidHeaderValue, CONTENT_TYPE};
 use reqwest::StatusCode;
 use thiserror::Error;
@@ -155,23 +156,12 @@ impl Client {
         }
     }
 
-    /// Make an HTTP twirp request.
-    pub async fn request<I, O>(&self, path: &str, body: I) -> Result<O>
+    /// Executes a `Request`.
+    pub(super) async fn execute<O>(&self, req: reqwest::Request) -> Result<O>
     where
-        I: prost::Message,
         O: prost::Message + Default,
     {
-        let mut url = self.inner.base_url.join(path)?;
-        if let Some(host) = &self.host {
-            url.set_host(Some(host))?
-        };
-        let path = url.path().to_string();
-        let req = self
-            .http_client
-            .post(url)
-            .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-            .body(serialize_proto_message(body))
-            .build()?;
+        let path = req.url().path().to_string();
 
         // Create and execute the middleware handlers
         let next = Next::new(&self.http_client, &self.inner.middlewares);
@@ -203,6 +193,68 @@ impl Client {
                     .unwrap_or_default(),
             }),
         }
+    }
+
+    /// Start building a `Request` with a path and a request body.
+    ///
+    /// Returns a `RequestBuilder`, which will allow setting headers before sending.
+    pub fn request<I, O>(&self, path: &str, body: I) -> Result<RequestBuilder<I, O>>
+    where
+        I: prost::Message,
+        O: prost::Message + Default,
+    {
+        let mut url = self.inner.base_url.join(path)?;
+        if let Some(host) = &self.host {
+            url.set_host(Some(host))?
+        };
+
+        let req = self
+            .http_client
+            .post(url)
+            .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
+            .body(serialize_proto_message(body));
+        Ok(RequestBuilder::new(self.clone(), req))
+    }
+}
+
+pub struct RequestBuilder<I, O>
+where
+    O: prost::Message + Default,
+{
+    client: Client,
+    inner: reqwest::RequestBuilder,
+    _input: std::marker::PhantomData<I>,
+    _output: std::marker::PhantomData<O>,
+}
+
+impl<I, O> RequestBuilder<I, O>
+where
+    O: prost::Message + Default,
+{
+    pub fn new(client: Client, inner: reqwest::RequestBuilder) -> Self {
+        Self {
+            client,
+            inner,
+            _input: std::marker::PhantomData,
+            _output: std::marker::PhantomData,
+        }
+    }
+
+    /// Add a `Header` to this Request.
+    pub fn header<K, V>(mut self, key: K, value: V) -> RequestBuilder<I, O>
+    where
+        HeaderName: TryFrom<K>,
+        <HeaderName as TryFrom<K>>::Error: Into<http::Error>,
+        HeaderValue: TryFrom<V>,
+        <HeaderValue as TryFrom<V>>::Error: Into<http::Error>,
+    {
+        self.inner = self.inner.header(key, value);
+        self
+    }
+
+    pub async fn send(self) -> Result<O> {
+        let req = self.inner.build()?;
+        self.client.execute(req).await
     }
 }
 
