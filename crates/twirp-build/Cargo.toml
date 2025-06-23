@@ -14,7 +14,7 @@ repository = "https://github.com/github/twirp-rs"
 license-file = "./LICENSE"
 
 [dependencies]
-prost-build = "0.13"
+prost-build = "0.14"
 prettyplease = { version = "0.2" }
 quote = "1.0"
 syn = "2.0"
