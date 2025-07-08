@@ -104,7 +104,7 @@ mod haberdash {
     include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
 }
 
-use haberdash::{HaberdasherApiClient, MakeHatRequest, MakeHatResponse};
+use haberdash::{HaberdasherApi, MakeHatRequest, MakeHatResponse};
 
 #[tokio::main]
 pub async fn main() {

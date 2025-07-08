@@ -144,7 +144,6 @@ async fn request_id_middleware(
 
 #[cfg(test)]
 mod test {
-    use service::haberdash::v1::HaberdasherApiClient;
     use twirp::client::Client;
     use twirp::url::Url;
 
@@ -228,7 +227,9 @@ mod test {
 
         let url = Url::parse(&format!("http://localhost:{}/twirp/", server.port)).unwrap();
         let client = Client::from_base_url(url).unwrap();
-        let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
+        let resp = client
+            .make_hat(Context::default(), MakeHatRequest { inches: 1 })
+            .await;
         println!("{:?}", resp);
         assert_eq!(resp.unwrap().size, 1);
 

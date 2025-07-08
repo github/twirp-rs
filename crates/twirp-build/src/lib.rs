@@ -161,8 +161,6 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         // generate the twirp client
         //
 
-        let client_name = service.client_name;
-        let mut client_trait_methods = Vec::with_capacity(service.methods.len());
         let mut client_methods = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
             let name = &m.name;
@@ -170,24 +168,17 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let output_type = &m.output_type;
             let request_path = format!("{}/{}", service.fqn, m.proto_name);
 
-            client_trait_methods.push(quote! {
-                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError>;
-            });
-
             client_methods.push(quote! {
-                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError> {
+                async fn #name(&self, _ctx: twirp::Context, req: #input_type) -> Result<#output_type, Self::Error> {
                     self.request(#request_path, req).await
                 }
-            })
+            });
         }
         let client_trait = quote! {
             #[twirp::async_trait::async_trait]
-            pub trait #client_name: Send + Sync {
-                #(#client_trait_methods)*
-            }
+            impl #server_name for twirp::client::Client {
+                type Error = twirp::ClientError;
 
-            #[twirp::async_trait::async_trait]
-            impl #client_name for twirp::client::Client {
                 #(#client_methods)*
             }
         };
