@@ -1,7 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use http::Extensions;
-
 /// Context allows passing information between twirp rpc handlers and http middleware by providing
 /// access to extensions on the `http::Request` and `http::Response`.
 ///
@@ -9,16 +7,23 @@ use http::Extensions;
 /// handler code.
 #[derive(Default)]
 pub struct Context {
-    extensions: Extensions,
-    resp_extensions: Arc<Mutex<Extensions>>,
+    req_extensions: http::Extensions,
+    resp_extensions: Arc<Mutex<http::Extensions>>,
 }
 
 impl Context {
-    pub fn new(extensions: Extensions, resp_extensions: Arc<Mutex<Extensions>>) -> Self {
+    pub fn new(
+        req_extensions: http::Extensions,
+        resp_extensions: Arc<Mutex<http::Extensions>>,
+    ) -> Self {
         Self {
-            extensions,
+            req_extensions,
             resp_extensions,
         }
+    }
+
+    pub fn extensions_mut(&mut self) -> &mut http::Extensions {
+        &mut self.req_extensions
     }
 
     /// Get a request extension.
@@ -26,7 +31,7 @@ impl Context {
     where
         T: Clone + Send + Sync + 'static,
     {
-        self.extensions.get::<T>()
+        self.req_extensions.get::<T>()
     }
 
     /// Insert a response extension.

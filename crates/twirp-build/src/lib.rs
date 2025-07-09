@@ -15,9 +15,6 @@ struct Service {
     /// The name of the server trait, as parsed into a Rust identifier.
     server_name: syn::Ident,
 
-    /// The name of the client trait, as parsed into a Rust identifier.
-    client_name: syn::Ident,
-
     /// The fully qualified protobuf name of this Service.
     fqn: String,
 
@@ -43,7 +40,6 @@ impl Service {
     fn from_prost(s: prost_build::Service) -> Self {
         let fqn = format!("{}.{}", s.package, s.proto_name);
         let server_name = format_ident!("{}", &s.name);
-        let client_name = format_ident!("{}Client", &s.name);
         let methods = s
             .methods
             .into_iter()
@@ -52,7 +48,6 @@ impl Service {
 
         Self {
             server_name,
-            client_name,
             fqn,
             methods,
         }
