@@ -9,6 +9,7 @@ use axum::body::Body;
 use axum::response::IntoResponse;
 use futures::Future;
 use http::request::Parts;
+use http::HeaderValue;
 use http_body_util::BodyExt;
 use hyper::{header, Request, Response};
 use serde::de::DeserializeOwned;
@@ -47,8 +48,8 @@ pub(crate) async fn handle_request<S, F, Fut, In, Out, Err>(
     f: F,
 ) -> Response<Body>
 where
-    F: FnOnce(S, crate::Request<In>) -> Fut + Clone + Sync + Send + 'static,
-    Fut: Future<Output = Result<crate::Response<Out>, Err>> + Send,
+    F: FnOnce(S, http::Request<In>) -> Fut + Clone + Sync + Send + 'static,
+    Fut: Future<Output = Result<http::Response<Out>, Err>> + Send,
     In: prost::Message + Default + serde::de::DeserializeOwned,
     Out: prost::Message + Default + serde::Serialize,
     Err: IntoTwirpResponse,
@@ -73,10 +74,7 @@ where
         }
     };
 
-    let r = crate::Request {
-        inner: http::Request::from_parts(parts, req),
-    };
-
+    let r = Request::from_parts(parts, req);
     let res = f(service, r).await;
     timings.set_response_handled();
 
@@ -114,7 +112,7 @@ where
 }
 
 fn write_response<T, Err>(
-    out: Result<crate::Response<T>, Err>,
+    out: Result<http::Response<T>, Err>,
     out_format: BodyFormat,
 ) -> Result<Response<Body>, GenericError>
 where
@@ -123,7 +121,7 @@ where
 {
     let res = match out {
         Ok(out) => {
-            let (parts, body) = out.inner.into_parts();
+            let (parts, body) = out.into_parts();
             let (body, content_type) = match out_format {
                 BodyFormat::Pb => (
                     Body::from(serialize_proto_message(body)),
@@ -133,12 +131,11 @@ where
                     (Body::from(serde_json::to_string(&body)?), CONTENT_TYPE_JSON)
                 }
             };
-            let mut resp = Response::builder()
-                .header(header::CONTENT_TYPE, content_type)
-                .body(body)?;
+            let mut resp = Response::new(body);
             resp.extensions_mut().extend(parts.extensions);
-            // TODO: This allows overriding the Content-Type header... do we want to allow that?
             resp.headers_mut().extend(parts.headers);
+            resp.headers_mut()
+                .insert(header::CONTENT_TYPE, HeaderValue::from_bytes(content_type)?);
             resp
         }
         Err(err) => err.into_twirp_response().map(|err| err.into_axum_body()),

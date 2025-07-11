@@ -161,8 +161,8 @@ impl Client {
     pub async fn request<I, O>(
         &self,
         path: &str,
-        req: crate::Request<I>,
-    ) -> Result<crate::Response<O>>
+        req: http::Request<I>,
+    ) -> Result<http::Response<O>>
     where
         I: prost::Message + Default + DeserializeOwned,
         O: prost::Message + Default + Serialize,
@@ -172,35 +172,44 @@ impl Client {
             url.set_host(Some(host))?
         };
         let path = url.path().to_string();
-        // TODO: Use other data on the request (e.g. header)
-        let req = self
+        let (parts, body) = req.into_parts();
+        let request = self
             .http_client
             .post(url)
+            .headers(parts.headers)
             .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-            .body(serialize_proto_message(req.inner.into_body()))
+            .body(serialize_proto_message(body))
             .build()?;
 
         // Create and execute the middleware handlers
         let next = Next::new(&self.http_client, &self.inner.middlewares);
-        let resp = next.run(req).await?;
+        let response = next.run(request).await?;
 
         // These have to be extracted because reading the body consumes `Response`.
-        let status = resp.status();
-        let content_type = resp.headers().get(CONTENT_TYPE).cloned();
+        let status = response.status();
+        let headers = response.headers().clone();
+        let extensions = response.extensions().clone();
+        let content_type = headers.get(CONTENT_TYPE).cloned();
 
         // TODO: Include more info in the error cases: request path, content-type, etc.
         match (status, content_type) {
             (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
-                O::decode(resp.bytes().await?)
-                    .map(|x| crate::Response::new(x))
+                O::decode(response.bytes().await?)
+                    .map(|x| {
+                        let mut resp = http::Response::new(x);
+                        resp.headers_mut().extend(headers);
+                        resp.extensions_mut().extend(extensions);
+                        resp
+                    })
                     .map_err(|e| e.into())
             }
             (status, Some(ct))
                 if (status.is_client_error() || status.is_server_error())
                     && ct.as_bytes() == CONTENT_TYPE_JSON =>
             {
+                // TODO: Should middleware response extensions and headers be included in the error case?
                 Err(ClientError::TwirpError(serde_json::from_slice(
-                    &resp.bytes().await?,
+                    &response.bytes().await?,
                 )?))
             }
             (status, ct) => Err(ClientError::HttpError {
@@ -304,7 +313,7 @@ mod tests {
             .build()
             .unwrap();
         assert!(client
-            .ping(crate::Request::new(PingRequest {
+            .ping(http::Request::new(PingRequest {
                 name: "hi".to_string(),
             }))
             .await
@@ -317,12 +326,12 @@ mod tests {
         let base_url = Url::parse("http://localhost:3002/twirp/").unwrap();
         let client = Client::from_base_url(base_url).unwrap();
         let resp = client
-            .ping(crate::Request::new(PingRequest {
+            .ping(http::Request::new(PingRequest {
                 name: "hi".to_string(),
             }))
             .await
             .unwrap();
-        let data = resp.inner.into_body();
+        let data = resp.into_body();
         assert_eq!(data.name, "hi");
         h.abort()
     }

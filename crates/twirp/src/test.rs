@@ -34,13 +34,13 @@ pub fn test_api_router() -> Router {
     let test_router = TwirpRouterBuilder::new(api)
         .route(
             "/Ping",
-            |api: Arc<TestApiServer>, req: crate::Request<PingRequest>| async move {
+            |api: Arc<TestApiServer>, req: http::Request<PingRequest>| async move {
                 api.ping(req).await
             },
         )
         .route(
             "/Boom",
-            |api: Arc<TestApiServer>, req: crate::Request<PingRequest>| async move {
+            |api: Arc<TestApiServer>, req: http::Request<PingRequest>| async move {
                 api.boom(req).await
             },
         )
@@ -87,23 +87,23 @@ pub struct TestApiServer;
 impl TestApi for TestApiServer {
     async fn ping(
         &self,
-        req: crate::Request<PingRequest>,
-    ) -> Result<crate::Response<PingResponse>, TwirpErrorResponse> {
-        let request_id = req.inner.extensions().get::<RequestId>().cloned();
-        let data = req.inner.into_body();
+        req: http::Request<PingRequest>,
+    ) -> Result<http::Response<PingResponse>, TwirpErrorResponse> {
+        let request_id = req.extensions().get::<RequestId>().cloned();
+        let data = req.into_body();
         if let Some(RequestId(rid)) = request_id {
-            Ok(crate::Response::new(PingResponse {
+            Ok(http::Response::new(PingResponse {
                 name: format!("{}-{}", data.name, rid),
             }))
         } else {
-            Ok(crate::Response::new(PingResponse { name: data.name }))
+            Ok(http::Response::new(PingResponse { name: data.name }))
         }
     }
 
     async fn boom(
         &self,
-        _: crate::Request<PingRequest>,
-    ) -> Result<crate::Response<PingResponse>, TwirpErrorResponse> {
+        _: http::Request<PingRequest>,
+    ) -> Result<http::Response<PingResponse>, TwirpErrorResponse> {
         Err(error::internal("boom!"))
     }
 }
@@ -114,25 +114,17 @@ pub struct RequestId(pub String);
 // Small test twirp services (this would usually be generated with twirp-build)
 #[async_trait]
 pub trait TestApiClient {
-    async fn ping(&self, req: crate::Request<PingRequest>)
-        -> Result<crate::Response<PingResponse>>;
-    async fn boom(&self, req: crate::Request<PingRequest>)
-        -> Result<crate::Response<PingResponse>>;
+    async fn ping(&self, req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>>;
+    async fn boom(&self, req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>>;
 }
 
 #[async_trait]
 impl TestApiClient for Client {
-    async fn ping(
-        &self,
-        req: crate::Request<PingRequest>,
-    ) -> Result<crate::Response<PingResponse>> {
+    async fn ping(&self, req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>> {
         self.request("test.TestAPI/Ping", req).await
     }
 
-    async fn boom(
-        &self,
-        _req: crate::Request<PingRequest>,
-    ) -> Result<crate::Response<PingResponse>> {
+    async fn boom(&self, _req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>> {
         todo!()
     }
 }
@@ -141,12 +133,12 @@ impl TestApiClient for Client {
 pub trait TestApi {
     async fn ping(
         &self,
-        req: crate::Request<PingRequest>,
-    ) -> Result<crate::Response<PingResponse>, TwirpErrorResponse>;
+        req: http::Request<PingRequest>,
+    ) -> Result<http::Response<PingResponse>, TwirpErrorResponse>;
     async fn boom(
         &self,
-        req: crate::Request<PingRequest>,
-    ) -> Result<crate::Response<PingResponse>, TwirpErrorResponse>;
+        req: http::Request<PingRequest>,
+    ) -> Result<http::Response<PingResponse>, TwirpErrorResponse>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

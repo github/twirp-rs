@@ -51,7 +51,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
         &self,
         req: twirp::Request<MakeHatRequest>,
     ) -> Result<twirp::Response<MakeHatResponse>, TwirpErrorResponse> {
-        let data = req.inner.into_body();
+        let data = req.into_body();
         if data.inches == 0 {
             return Err(invalid_argument("inches"));
         }
@@ -70,7 +70,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
             }),
         });
         // Demonstrate adding custom extensions to the response (this could be handled by middleware).
-        resp.inner.extensions_mut().insert(ResponseInfo(42));
+        resp.extensions_mut().insert(ResponseInfo(42));
         Ok(resp)
     }
 
@@ -105,7 +105,7 @@ mod test {
             .make_hat(twirp::Request::new(MakeHatRequest { inches: 1 }))
             .await;
         assert!(res.is_ok());
-        let res = res.unwrap().inner.into_body();
+        let res = res.unwrap().into_body();
         assert_eq!(res.size, 1);
     }
 
@@ -180,7 +180,7 @@ mod test {
             .make_hat(twirp::Request::new(MakeHatRequest { inches: 1 }))
             .await;
         println!("{:?}", resp);
-        let data = resp.unwrap().inner.into_body();
+        let data = resp.unwrap().into_body();
         assert_eq!(data.size, 1);
 
         server.shutdown().await;

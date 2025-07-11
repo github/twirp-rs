@@ -71,13 +71,13 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
 
     async fn make_hat(
         &self,
-        req: twirp::Request<MakeHatRequest>,
-    ) -> Result<twirp::Response<MakeHatResponse>, HatError> {
-        if let Some(rid) = req.inner.extensions().get::<RequestId>() {
+        req: http::Request<MakeHatRequest>,
+    ) -> Result<http::Response<MakeHatResponse>, HatError> {
+        if let Some(rid) = req.extensions().get::<RequestId>() {
             println!("got request_id: {rid:?}");
         }
 
-        let data = req.inner.into_body();
+        let data = req.into_body();
         if data.inches == 0 {
             return Err(HatError::InvalidSize);
         }
@@ -86,7 +86,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
         let ts = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
-        let mut resp = twirp::Response::new(MakeHatResponse {
+        let mut resp = http::Response::new(MakeHatResponse {
             color: "black".to_string(),
             name: "top hat".to_string(),
             size: data.inches,
@@ -96,15 +96,15 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
             }),
         });
         // Demonstrate adding custom extensions to the response (this could be handled by middleware).
-        resp.inner.extensions_mut().insert(ResponseInfo(42));
+        resp.extensions_mut().insert(ResponseInfo(42));
         Ok(resp)
     }
 
     async fn get_status(
         &self,
-        _req: twirp::Request<GetStatusRequest>,
-    ) -> Result<twirp::Response<GetStatusResponse>, HatError> {
-        Ok(twirp::Response::new(GetStatusResponse {
+        _req: http::Request<GetStatusRequest>,
+    ) -> Result<http::Response<GetStatusResponse>, HatError> {
+        Ok(http::Response::new(GetStatusResponse {
             status: "making hats".to_string(),
         }))
     }
@@ -155,10 +155,10 @@ mod test {
     async fn success() {
         let api = HaberdasherApiServer {};
         let res = api
-            .make_hat(twirp::Request::new(MakeHatRequest { inches: 1 }))
+            .make_hat(http::Request::new(MakeHatRequest { inches: 1 }))
             .await;
         assert!(res.is_ok());
-        let data = res.unwrap().inner.into_body();
+        let data = res.unwrap().into_body();
         assert_eq!(data.size, 1);
     }
 
@@ -166,7 +166,7 @@ mod test {
     async fn invalid_request() {
         let api = HaberdasherApiServer {};
         let res = api
-            .make_hat(twirp::Request::new(MakeHatRequest { inches: 0 }))
+            .make_hat(http::Request::new(MakeHatRequest { inches: 0 }))
             .await;
         assert!(res.is_err());
         let err = res.unwrap_err();
@@ -230,10 +230,10 @@ mod test {
         let url = Url::parse(&format!("http://localhost:{}/twirp/", server.port)).unwrap();
         let client = Client::from_base_url(url).unwrap();
         let resp = client
-            .make_hat(twirp::Request::new(MakeHatRequest { inches: 1 }))
+            .make_hat(http::Request::new(MakeHatRequest { inches: 1 }))
             .await;
         println!("{:?}", resp);
-        let data = resp.unwrap().inner.into_body();
+        let data = resp.unwrap().into_body();
         assert_eq!(data.size, 1);
 
         server.shutdown().await;
