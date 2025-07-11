@@ -25,6 +25,17 @@ async fn ping() -> &'static str {
     "Pong\n"
 }
 
+/// You can run this end-to-end example by running both a server and a client and observing the requests/responses.
+///
+/// 1. Run the server:
+/// ```sh
+/// cargo run --bin advanced-server
+/// ```
+///
+/// 2. In another shell, run the client:
+/// ```sh
+/// cargo run --bin client
+/// ```
 #[tokio::main]
 pub async fn main() {
     let api_impl = HaberdasherApiServer {};

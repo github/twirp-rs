@@ -15,6 +15,17 @@ use service::haberdash::v1::{
     GetStatusRequest, GetStatusResponse, HaberdasherApi, MakeHatRequest, MakeHatResponse,
 };
 
+/// You can run this end-to-end example by running both a server and a client and observing the requests/responses.
+///
+/// 1. Run the server:
+/// ```sh
+/// cargo run --bin advanced-server # OR cargo run --bin simple-server
+/// ```
+///
+/// 2. In another shell, run the client:
+/// ```sh
+/// cargo run --bin client
+/// ```
 #[tokio::main]
 pub async fn main() -> Result<(), GenericError> {
     // basic client
