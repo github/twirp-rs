@@ -1,5 +1,4 @@
 pub mod client;
-pub mod context;
 pub mod error;
 pub mod headers;
 pub mod server;
@@ -11,7 +10,6 @@ pub mod test;
 pub mod details;
 
 pub use client::{Client, ClientBuilder, ClientError, Middleware, Next, Result};
-pub use context::Context;
 pub use error::*; // many constructors like `invalid_argument()`
 pub use http::Extensions;
 
@@ -38,4 +36,48 @@ where
         .expect("can only fail if buffer does not have capacity");
     assert_eq!(data.len(), len);
     data
+}
+
+#[derive(Debug, Default)]
+pub struct Request<T>
+where
+    T: prost::Message + Default + serde::de::DeserializeOwned,
+{
+    pub inner: http::Request<T>,
+}
+
+impl<T> Request<T>
+where
+    T: prost::Message + Default + serde::de::DeserializeOwned,
+{
+    pub fn new(data: T) -> Self {
+        Request {
+            inner: http::Request::new(data),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Response<T>
+where
+    T: prost::Message + Default + serde::Serialize,
+{
+    pub inner: http::Response<T>,
+}
+
+impl<T> Response<T>
+where
+    T: prost::Message + Default + serde::Serialize,
+{
+    pub fn new(data: T) -> Self {
+        Response {
+            inner: http::Response::new(data),
+        }
+    }
+
+    pub fn from_parts(parts: http::response::Parts, data: T) -> Self {
+        Response {
+            inner: http::Response::from_parts(parts, data),
+        }
+    }
 }

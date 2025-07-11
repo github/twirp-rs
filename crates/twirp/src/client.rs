@@ -4,6 +4,8 @@ use std::vec;
 use async_trait::async_trait;
 use reqwest::header::{InvalidHeaderValue, CONTENT_TYPE};
 use reqwest::StatusCode;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use thiserror::Error;
 use url::Url;
 
@@ -156,21 +158,26 @@ impl Client {
     }
 
     /// Make an HTTP twirp request.
-    pub async fn request<I, O>(&self, path: &str, body: I) -> Result<O>
+    pub async fn request<I, O>(
+        &self,
+        path: &str,
+        req: crate::Request<I>,
+    ) -> Result<crate::Response<O>>
     where
-        I: prost::Message,
-        O: prost::Message + Default,
+        I: prost::Message + Default + DeserializeOwned,
+        O: prost::Message + Default + Serialize,
     {
         let mut url = self.inner.base_url.join(path)?;
         if let Some(host) = &self.host {
             url.set_host(Some(host))?
         };
         let path = url.path().to_string();
+        // TODO: Use other data on the request (e.g. header)
         let req = self
             .http_client
             .post(url)
             .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-            .body(serialize_proto_message(body))
+            .body(serialize_proto_message(req.inner.into_body()))
             .build()?;
 
         // Create and execute the middleware handlers
@@ -184,7 +191,9 @@ impl Client {
         // TODO: Include more info in the error cases: request path, content-type, etc.
         match (status, content_type) {
             (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
-                O::decode(resp.bytes().await?).map_err(|e| e.into())
+                O::decode(resp.bytes().await?)
+                    .map(|x| crate::Response::new(x))
+                    .map_err(|e| e.into())
             }
             (status, Some(ct))
                 if (status.is_client_error() || status.is_server_error())
@@ -295,9 +304,9 @@ mod tests {
             .build()
             .unwrap();
         assert!(client
-            .ping(PingRequest {
+            .ping(crate::Request::new(PingRequest {
                 name: "hi".to_string(),
-            })
+            }))
             .await
             .is_err()); // expected connection refused error.
     }
@@ -308,12 +317,13 @@ mod tests {
         let base_url = Url::parse("http://localhost:3002/twirp/").unwrap();
         let client = Client::from_base_url(base_url).unwrap();
         let resp = client
-            .ping(PingRequest {
+            .ping(crate::Request::new(PingRequest {
                 name: "hi".to_string(),
-            })
+            }))
             .await
             .unwrap();
-        assert_eq!(&resp.name, "hi");
+        let data = resp.inner.into_body();
+        assert_eq!(data.name, "hi");
         h.abort()
     }
 }

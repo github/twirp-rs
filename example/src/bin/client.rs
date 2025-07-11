@@ -13,15 +13,16 @@ pub mod service {
 }
 
 use service::haberdash::v1::{
-    GetStatusRequest, GetStatusResponse, HaberdasherApiClient, MakeHatRequest, MakeHatResponse,
+    GetStatusRequest, GetStatusResponse, HaberdasherApi, MakeHatRequest, MakeHatResponse,
 };
 
 #[tokio::main]
 pub async fn main() -> Result<(), GenericError> {
     // basic client
-    use service::haberdash::v1::HaberdasherApiClient;
     let client = Client::from_base_url(Url::parse("http://localhost:3000/twirp/")?)?;
-    let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
+    let resp = client
+        .make_hat(twirp::Request::new(MakeHatRequest { inches: 1 }))
+        .await;
     eprintln!("{:?}", resp);
 
     // customize the client with middleware
@@ -34,7 +35,7 @@ pub async fn main() -> Result<(), GenericError> {
     .build()?;
     let resp = client
         .with_host("localhost")
-        .make_hat(MakeHatRequest { inches: 1 })
+        .make_hat(twirp::Request::new(MakeHatRequest { inches: 1 }))
         .await;
     eprintln!("{:?}", resp);
 
@@ -74,18 +75,20 @@ impl Middleware for PrintResponseHeaders {
 struct MockHaberdasherApiClient;
 
 #[async_trait]
-impl HaberdasherApiClient for MockHaberdasherApiClient {
+impl HaberdasherApi for MockHaberdasherApiClient {
+    type Error = twirp::client::ClientError;
+
     async fn make_hat(
         &self,
-        _req: MakeHatRequest,
-    ) -> Result<MakeHatResponse, twirp::client::ClientError> {
+        _req: twirp::Request<MakeHatRequest>,
+    ) -> Result<twirp::Response<MakeHatResponse>, Self::Error> {
         todo!()
     }
 
     async fn get_status(
         &self,
-        _req: GetStatusRequest,
-    ) -> Result<GetStatusResponse, twirp::client::ClientError> {
+        _req: twirp::Request<GetStatusRequest>,
+    ) -> Result<twirp::Response<GetStatusResponse>, Self::Error> {
         todo!()
     }
 }

@@ -15,9 +15,6 @@ struct Service {
     /// The name of the server trait, as parsed into a Rust identifier.
     server_name: syn::Ident,
 
-    /// The name of the client trait, as parsed into a Rust identifier.
-    client_name: syn::Ident,
-
     /// The fully qualified protobuf name of this Service.
     fqn: String,
 
@@ -43,7 +40,6 @@ impl Service {
     fn from_prost(s: prost_build::Service) -> Self {
         let fqn = format!("{}.{}", s.package, s.proto_name);
         let server_name = format_ident!("{}", &s.name);
-        let client_name = format_ident!("{}Client", &s.name);
         let methods = s
             .methods
             .into_iter()
@@ -52,7 +48,6 @@ impl Service {
 
         Self {
             server_name,
-            client_name,
             fqn,
             methods,
         }
@@ -102,12 +97,12 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let output_type = &m.output_type;
 
             trait_methods.push(quote! {
-                async fn #name(&self, ctx: twirp::Context, req: #input_type) -> Result<#output_type, Self::Error>;
+                async fn #name(&self, req: twirp::Request<#input_type>) -> Result<twirp::Response<#output_type>, Self::Error>;
             });
 
             proxy_methods.push(quote! {
-                async fn #name(&self, ctx: twirp::Context, req: #input_type) -> Result<#output_type, Self::Error> {
-                    T::#name(&*self, ctx, req).await
+                async fn #name(&self, req: twirp::Request<#input_type>) -> Result<twirp::Response<#output_type>, Self::Error> {
+                    T::#name(&*self, req).await
                 }
             });
         }
@@ -140,8 +135,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let path = format!("/{uri}", uri = m.proto_name);
 
             route_calls.push(quote! {
-                .route(#path, |api: T, ctx: twirp::Context, req: #input_type| async move {
-                    api.#name(ctx, req).await
+                .route(#path, |api: T, req: twirp::Request<#input_type>| async move {
+                    api.#name(req).await
                 })
             });
         }
@@ -160,9 +155,6 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         //
         // generate the twirp client
         //
-
-        let client_name = service.client_name;
-        let mut client_trait_methods = Vec::with_capacity(service.methods.len());
         let mut client_methods = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
             let name = &m.name;
@@ -170,24 +162,17 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let output_type = &m.output_type;
             let request_path = format!("{}/{}", service.fqn, m.proto_name);
 
-            client_trait_methods.push(quote! {
-                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError>;
-            });
-
             client_methods.push(quote! {
-                async fn #name(&self, req: #input_type) -> Result<#output_type, twirp::ClientError> {
+                async fn #name(&self, req: twirp::Request<#input_type>) -> Result<twirp::Response<#output_type>, twirp::ClientError> {
                     self.request(#request_path, req).await
                 }
             })
         }
         let client_trait = quote! {
             #[twirp::async_trait::async_trait]
-            pub trait #client_name: Send + Sync {
-                #(#client_trait_methods)*
-            }
+            impl #server_name for twirp::client::Client {
+                type Error = twirp::ClientError;
 
-            #[twirp::async_trait::async_trait]
-            impl #client_name for twirp::client::Client {
                 #(#client_methods)*
             }
         };
