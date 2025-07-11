@@ -4,6 +4,8 @@ use std::vec;
 use async_trait::async_trait;
 use reqwest::header::{InvalidHeaderValue, CONTENT_TYPE};
 use reqwest::StatusCode;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use thiserror::Error;
 use url::Url;
 
@@ -156,42 +158,58 @@ impl Client {
     }
 
     /// Make an HTTP twirp request.
-    pub async fn request<I, O>(&self, path: &str, body: I) -> Result<O>
+    pub async fn request<I, O>(
+        &self,
+        path: &str,
+        req: http::Request<I>,
+    ) -> Result<http::Response<O>>
     where
-        I: prost::Message,
-        O: prost::Message + Default,
+        I: prost::Message + Default + DeserializeOwned,
+        O: prost::Message + Default + Serialize,
     {
         let mut url = self.inner.base_url.join(path)?;
         if let Some(host) = &self.host {
             url.set_host(Some(host))?
         };
         let path = url.path().to_string();
-        let req = self
+        let (parts, body) = req.into_parts();
+        let request = self
             .http_client
             .post(url)
+            .headers(parts.headers)
             .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
             .body(serialize_proto_message(body))
             .build()?;
 
         // Create and execute the middleware handlers
         let next = Next::new(&self.http_client, &self.inner.middlewares);
-        let resp = next.run(req).await?;
+        let response = next.run(request).await?;
 
         // These have to be extracted because reading the body consumes `Response`.
-        let status = resp.status();
-        let content_type = resp.headers().get(CONTENT_TYPE).cloned();
+        let status = response.status();
+        let headers = response.headers().clone();
+        let extensions = response.extensions().clone();
+        let content_type = headers.get(CONTENT_TYPE).cloned();
 
         // TODO: Include more info in the error cases: request path, content-type, etc.
         match (status, content_type) {
             (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
-                O::decode(resp.bytes().await?).map_err(|e| e.into())
+                O::decode(response.bytes().await?)
+                    .map(|x| {
+                        let mut resp = http::Response::new(x);
+                        resp.headers_mut().extend(headers);
+                        resp.extensions_mut().extend(extensions);
+                        resp
+                    })
+                    .map_err(|e| e.into())
             }
             (status, Some(ct))
                 if (status.is_client_error() || status.is_server_error())
                     && ct.as_bytes() == CONTENT_TYPE_JSON =>
             {
+                // TODO: Should middleware response extensions and headers be included in the error case?
                 Err(ClientError::TwirpError(serde_json::from_slice(
-                    &resp.bytes().await?,
+                    &response.bytes().await?,
                 )?))
             }
             (status, ct) => Err(ClientError::HttpError {
@@ -295,9 +313,9 @@ mod tests {
             .build()
             .unwrap();
         assert!(client
-            .ping(PingRequest {
+            .ping(http::Request::new(PingRequest {
                 name: "hi".to_string(),
-            })
+            }))
             .await
             .is_err()); // expected connection refused error.
     }
@@ -308,12 +326,13 @@ mod tests {
         let base_url = Url::parse("http://localhost:3002/twirp/").unwrap();
         let client = Client::from_base_url(base_url).unwrap();
         let resp = client
-            .ping(PingRequest {
+            .ping(http::Request::new(PingRequest {
                 name: "hi".to_string(),
-            })
+            }))
             .await
             .unwrap();
-        assert_eq!(&resp.name, "hi");
+        let data = resp.into_body();
+        assert_eq!(data.name, "hi");
         h.abort()
     }
 }

@@ -8,7 +8,7 @@ use twirp::axum::body::Body;
 use twirp::axum::http;
 use twirp::axum::middleware::{self, Next};
 use twirp::axum::routing::get;
-use twirp::{invalid_argument, Context, IntoTwirpResponse, Router, TwirpErrorResponse};
+use twirp::{invalid_argument, IntoTwirpResponse, Router, TwirpErrorResponse};
 
 pub mod service {
     pub mod haberdash {
@@ -25,6 +25,17 @@ async fn ping() -> &'static str {
     "Pong\n"
 }
 
+/// You can run this end-to-end example by running both a server and a client and observing the requests/responses.
+///
+/// 1. Run the server:
+/// ```sh
+/// cargo run --bin advanced-server
+/// ```
+///
+/// 2. In another shell, run the client:
+/// ```sh
+/// cargo run --bin client
+/// ```
 #[tokio::main]
 pub async fn main() {
     let api_impl = HaberdasherApiServer {};
@@ -71,41 +82,42 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
 
     async fn make_hat(
         &self,
-        ctx: Context,
-        req: MakeHatRequest,
-    ) -> Result<MakeHatResponse, HatError> {
-        if req.inches == 0 {
+        req: http::Request<MakeHatRequest>,
+    ) -> Result<http::Response<MakeHatResponse>, HatError> {
+        if let Some(rid) = req.extensions().get::<RequestId>() {
+            println!("got request_id: {rid:?}");
+        }
+
+        let data = req.into_body();
+        if data.inches == 0 {
             return Err(HatError::InvalidSize);
         }
 
-        if let Some(id) = ctx.get::<RequestId>() {
-            println!("{id:?}");
-        };
-
-        println!("got {req:?}");
-        ctx.insert::<ResponseInfo>(ResponseInfo(42));
+        println!("got {data:?}");
         let ts = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
-        Ok(MakeHatResponse {
+        let mut resp = http::Response::new(MakeHatResponse {
             color: "black".to_string(),
             name: "top hat".to_string(),
-            size: req.inches,
+            size: data.inches,
             timestamp: Some(prost_wkt_types::Timestamp {
                 seconds: ts.as_secs() as i64,
                 nanos: 0,
             }),
-        })
+        });
+        // Demonstrate adding custom extensions to the response (this could be handled by middleware).
+        resp.extensions_mut().insert(ResponseInfo(42));
+        Ok(resp)
     }
 
     async fn get_status(
         &self,
-        _ctx: Context,
-        _req: GetStatusRequest,
-    ) -> Result<GetStatusResponse, HatError> {
-        Ok(GetStatusResponse {
+        _req: http::Request<GetStatusRequest>,
+    ) -> Result<http::Response<GetStatusResponse>, HatError> {
+        Ok(http::Response::new(GetStatusResponse {
             status: "making hats".to_string(),
-        })
+        }))
     }
 }
 
@@ -144,29 +156,29 @@ async fn request_id_middleware(
 
 #[cfg(test)]
 mod test {
-    use service::haberdash::v1::HaberdasherApiClient;
+    use service::haberdash::v1::HaberdasherApi;
     use twirp::client::Client;
     use twirp::url::Url;
-
-    use crate::service::haberdash::v1::HaberdasherApi;
 
     use super::*;
 
     #[tokio::test]
     async fn success() {
         let api = HaberdasherApiServer {};
-        let ctx = twirp::Context::default();
-        let res = api.make_hat(ctx, MakeHatRequest { inches: 1 }).await;
+        let res = api
+            .make_hat(http::Request::new(MakeHatRequest { inches: 1 }))
+            .await;
         assert!(res.is_ok());
-        let res = res.unwrap();
-        assert_eq!(res.size, 1);
+        let data = res.unwrap().into_body();
+        assert_eq!(data.size, 1);
     }
 
     #[tokio::test]
     async fn invalid_request() {
         let api = HaberdasherApiServer {};
-        let ctx = twirp::Context::default();
-        let res = api.make_hat(ctx, MakeHatRequest { inches: 0 }).await;
+        let res = api
+            .make_hat(http::Request::new(MakeHatRequest { inches: 0 }))
+            .await;
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert_eq!(err, HatError::InvalidSize);
@@ -228,9 +240,12 @@ mod test {
 
         let url = Url::parse(&format!("http://localhost:{}/twirp/", server.port)).unwrap();
         let client = Client::from_base_url(url).unwrap();
-        let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
+        let resp = client
+            .make_hat(http::Request::new(MakeHatRequest { inches: 1 }))
+            .await;
         println!("{:?}", resp);
-        assert_eq!(resp.unwrap().size, 1);
+        let data = resp.unwrap().into_body();
+        assert_eq!(data.size, 1);
 
         server.shutdown().await;
     }
