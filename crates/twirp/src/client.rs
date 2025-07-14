@@ -4,8 +4,6 @@ use std::vec;
 use async_trait::async_trait;
 use reqwest::header::{InvalidHeaderValue, CONTENT_TYPE};
 use reqwest::StatusCode;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use thiserror::Error;
 use url::Url;
 
@@ -164,8 +162,8 @@ impl Client {
         req: http::Request<I>,
     ) -> Result<http::Response<O>>
     where
-        I: prost::Message + Default + DeserializeOwned,
-        O: prost::Message + Default + Serialize,
+        I: prost::Message,
+        O: prost::Message + Default,
     {
         let mut url = self.inner.base_url.join(path)?;
         if let Some(host) = &self.host {
