@@ -2,25 +2,4 @@
 
 `twirp-build` does code generation of structs and traits that match your protobuf definitions that you can then use with the `twirp` crate.
 
-More information about how to use this crate can be found in the [`twirp` crate documentation](https://github.com/github/twirp-rs/).
-
-## Minimum supported Rust version
-
-The MSRV for this crate is the version defined in [`rust-toolchain.toml`](https://github.com/github/twirp-rs/blob/main/rust-toolchain.toml)
-
-## Getting Help
-
-You are welcome to open an [issue] with your question.
-
-## Contributing
-
-🎈 Thanks for your help improving the project! We are so happy to have
-you! We have a [contributing guide][contributing] to help you get involved in the project.
-
-## License
-
-This project is licensed under the [MIT license][license].
-
-[contributing]: https://github.com/github/twirp-rs/blob/main/CONTRIBUTING.md
-[license]: https://github.com/github/twirp-rs/blob/main/LICENSE
-[issue]: https://github.com/github/twirp-rs/issues/new
+More information about this crate can be found in the [`twirp` crate documentation](https://github.com/github/twirp-rs/).
