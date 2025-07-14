@@ -2,7 +2,7 @@
 
 [Twirp is an RPC protocol](https://twitchtv.github.io/twirp/docs/spec_v7.html) based on HTTP and Protocol Buffers (proto). The protocol uses HTTP URLs to specify the RPC endpoints, and sends/receives proto messages as HTTP request/response bodies. Services are defined in a [.proto file](https://developers.google.com/protocol-buffers/docs/proto3), allowing easy implementation of RPC services with auto-generated clients and servers in different languages.
 
-The [canonical implementation](https://github.com/twitchtv/twirp) is in Go. This is a Rust implementation of the protocol. Rust protocol buffer support is provided by the [`prost`](https://github.com/tokio-rs/prost) ecosystem.
+The [canonical implementation](https://github.com/twitchtv/twirp) is in Go, and this is a Rust implementation of the protocol. Rust protocol buffer support is provided by the [`prost`](https://github.com/tokio-rs/prost) ecosystem.
 
 Unlike [`prost-twirp`](https://github.com/sourcefrog/prost-twirp), the generated traits for serving and accessing RPCs are implemented atop `async` functions. Because traits containing `async` functions [are not directly supported](https://smallcultfollowing.com/babysteps/blog/2019/10/26/async-fn-in-traits-are-hard/) in Rust versions prior to 1.75, this crate uses the [`async_trait`](https://github.com/dtolnay/async-trait) macro to encapsulate the scaffolding required to make them work.
 
