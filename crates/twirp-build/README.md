@@ -6,7 +6,7 @@ More information about how to use this crate can be found in the [`twirp` crate 
 
 ## Minimum supported Rust version
 
-The MSRV for this crate is the version defined in [`rust-toolchain.toml`](./rust-toolchain.md)
+The MSRV for this crate is the version defined in [`rust-toolchain.toml`](https://github.com/github/twirp-rs/blob/main/rust-toolchain.toml)
 
 ## Getting Help
 

@@ -51,7 +51,7 @@ fn main() {
 }
 ```
 
-This generates code that you can find in `target/build/your-project-*/out/example.service.rs`. In order to use this code, you'll need to implement the trait for the proto defined service and wire up the service handlers to a hyper web server. See [the example `main.rs`]( example/src/main.rs) for details.
+This generates code that you can find in `target/build/your-project-*/out/example.service.rs`. In order to use this code, you'll need to implement the trait for the proto defined service and wire up the service handlers to a hyper web server. See [the example](https://github.com/github/twirp-rs/tree/main/example) for details.
 
 Include the generated code, create a router, register your service, and then serve those routes in the hyper server:
 
