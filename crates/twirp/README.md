@@ -91,9 +91,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
 }
 ```
 
-This code creates an `axum::Router`, then hands it off to `axum::serve()` to handle networking.
-This use of `axum::serve` is optional. After building `app`, you can instead invoke it from any
-`hyper`-based server by importing `twirp::tower::Service` and doing `app.call(request).await`.
+This code creates an `axum::Router`, then hands it off to `axum::serve()` to handle networking. This use of `axum::serve` is optional. After building `app`, you can instead invoke it from any `hyper`-based server by importing `twirp::tower::Service` and doing `app.call(request).await`.
 
 ## Usage (client side)
 
@@ -124,8 +122,7 @@ You are welcome to open an [issue] with your question.
 
 ## Contributing
 
-🎈 Thanks for your help improving the project! We are so happy to have
-you! We have a [contributing guide][contributing] to help you get involved in the project.
+🎈 Thanks for your help improving the project! We are so happy to have you! We have a [contributing guide][contributing] to help you get involved in the project.
 
 ## License
 
