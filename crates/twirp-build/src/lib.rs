@@ -110,7 +110,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let server_name = &service.server_name;
         let server_trait = quote! {
             #[twirp::async_trait::async_trait]
-            pub trait #server_name {
+            pub trait #server_name: Send + Sync {
                 type Error;
 
                 #(#trait_methods)*
