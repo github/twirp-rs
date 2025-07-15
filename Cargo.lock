@@ -1301,7 +1301,6 @@ name = "twirp-build"
 version = "0.8.0"
 dependencies = [
  "prettyplease",
- "proc-macro2",
  "prost-build",
  "quote",
  "syn",
