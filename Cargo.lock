@@ -213,6 +213,7 @@ dependencies = [
  "prost-wkt-build",
  "prost-wkt-types",
  "serde",
+ "thiserror",
  "tokio",
  "twirp",
  "twirp-build",

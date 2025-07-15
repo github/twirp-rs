@@ -37,7 +37,7 @@ pub enum ClientError {
     #[error(transparent)]
     ReqwestError(#[from] reqwest::Error),
     #[error("twirp error: {0:?}")]
-    TwirpError(TwirpErrorResponse),
+    TwirpError(#[from] TwirpErrorResponse),
 
     /// A generic error that can be used by custom middleware.
     #[error(transparent)]

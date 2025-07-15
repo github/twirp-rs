@@ -7,6 +7,7 @@ use axum::response::IntoResponse;
 use http::header::{self, HeaderMap, HeaderValue};
 use hyper::{Response, StatusCode};
 use serde::{Deserialize, Serialize, Serializer};
+use thiserror::Error;
 
 /// Trait for user-defined error types that can be converted to Twirp responses.
 pub trait IntoTwirpResponse {
@@ -168,7 +169,7 @@ impl Serialize for TwirpErrorCode {
 }
 
 // Twirp error responses are always JSON
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Error)]
 pub struct TwirpErrorResponse {
     pub code: TwirpErrorCode,
     pub msg: String,
@@ -205,6 +206,12 @@ impl IntoTwirpResponse for TwirpErrorResponse {
 impl IntoResponse for TwirpErrorResponse {
     fn into_response(self) -> Response<Body> {
         self.into_twirp_response().map(|err| err.into_axum_body())
+    }
+}
+
+impl std::fmt::Display for TwirpErrorResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code.twirp_code(), self.msg)
     }
 }
 

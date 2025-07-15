@@ -13,7 +13,10 @@ pub fn service_generator() -> Box<ServiceGenerator> {
 
 struct Service {
     /// The name of the server trait, as parsed into a Rust identifier.
-    server_name: syn::Ident,
+    rpc_trait_name: syn::Ident,
+
+    /// The name of the passthrough client.
+    direct_client_name: syn::Ident,
 
     /// The fully qualified protobuf name of this Service.
     fqn: String,
@@ -39,7 +42,8 @@ struct Method {
 impl Service {
     fn from_prost(s: prost_build::Service) -> Self {
         let fqn = format!("{}.{}", s.package, s.proto_name);
-        let server_name = format_ident!("{}", &s.name);
+        let rpc_trait_name = format_ident!("{}", &s.name);
+        let direct_client_name = format_ident!("{}DirectClient", &s.name);
         let methods = s
             .methods
             .into_iter()
@@ -47,7 +51,8 @@ impl Service {
             .collect();
 
         Self {
-            server_name,
+            rpc_trait_name,
+            direct_client_name,
             fqn,
             methods,
         }
@@ -107,19 +112,19 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             });
         }
 
-        let server_name = &service.server_name;
+        let rpc_trait_name = &service.rpc_trait_name;
         let server_trait = quote! {
             #[twirp::async_trait::async_trait]
-            pub trait #server_name: Send + Sync {
+            pub trait #rpc_trait_name: Send + Sync {
                 type Error;
 
                 #(#trait_methods)*
             }
 
             #[twirp::async_trait::async_trait]
-            impl<T> #server_name for std::sync::Arc<T>
+            impl<T> #rpc_trait_name for std::sync::Arc<T>
             where
-                T: #server_name + Sync + Send
+                T: #rpc_trait_name + Sync + Send
             {
                 type Error = T::Error;
 
@@ -143,8 +148,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let router = quote! {
             pub fn router<T>(api: T) -> twirp::Router
                 where
-                    T: #server_name + Clone + Send + Sync + 'static,
-                    <T as #server_name>::Error: twirp::IntoTwirpResponse
+                    T: #rpc_trait_name + Clone + Send + Sync + 'static,
+                    <T as #rpc_trait_name>::Error: twirp::IntoTwirpResponse
                 {
                     twirp::details::TwirpRouterBuilder::new(api)
                         #(#route_calls)*
@@ -170,7 +175,41 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         }
         let client_trait = quote! {
             #[twirp::async_trait::async_trait]
-            impl #server_name for twirp::client::Client {
+            impl #rpc_trait_name for twirp::client::Client {
+                type Error = twirp::ClientError;
+
+                #(#client_methods)*
+            }
+        };
+
+        //
+        // generate the passthrough client
+        //
+
+        let direct_client_name = &service.direct_client_name;
+        let mut client_methods = Vec::with_capacity(service.methods.len());
+        for m in &service.methods {
+            let name = &m.name;
+            let input_type = &m.input_type;
+            let output_type = &m.output_type;
+
+            client_methods.push(quote! {
+                async fn #name(&self, req: twirp::Request<#input_type>) -> Result<twirp::Response<#output_type>, twirp::ClientError> {
+                    let res = self
+                        .0
+                        .#name(req)
+                        .await
+                        .map_err(|err| err.into_twirp_response().into_body())?;
+                    Ok(res)
+                }
+            })
+        }
+        let direct_client = quote! {
+            #[derive(Clone)]
+            pub struct #direct_client_name<T>(pub T) where T : #rpc_trait_name;
+
+            #[twirp::async_trait::async_trait]
+            impl<T> #rpc_trait_name for #direct_client_name<T> where T: #rpc_trait_name, <T as #rpc_trait_name>::Error : twirp::IntoTwirpResponse {
                 type Error = twirp::ClientError;
 
                 #(#client_methods)*
@@ -182,6 +221,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let service_fqn_path = format!("/{}", service.fqn);
         let generated = quote! {
             pub use twirp;
+            use twirp::IntoTwirpResponse;
 
             pub const SERVICE_FQN: &str = #service_fqn_path;
 
@@ -190,6 +230,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             #router
 
             #client_trait
+
+            #direct_client
         };
 
         let ast: syn::File = syn::parse2(generated)
