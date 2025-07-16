@@ -9,6 +9,8 @@ use hyper::{Response, StatusCode};
 use serde::{Deserialize, Serialize, Serializer};
 use thiserror::Error;
 
+// TODO: I think we should remove this
+//
 /// Trait for user-defined error types that can be converted to Twirp responses.
 pub trait IntoTwirpResponse {
     /// Generate a Twirp response. The return type is the `http::Response` type, with a
@@ -229,6 +231,7 @@ impl From<url::ParseError> for TwirpErrorResponse {
     }
 }
 
+// Invalid header value (client middleware examples use this)
 impl From<header::InvalidHeaderValue> for TwirpErrorResponse {
     fn from(e: header::InvalidHeaderValue) -> Self {
         malformed(e.to_string())

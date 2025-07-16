@@ -179,28 +179,28 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         // generate the passthrough client
         //
 
-        // let direct_client_name = &service.direct_client_name;
-        // let mut client_methods = Vec::with_capacity(service.methods.len());
-        // for m in &service.methods {
-        //     let name = &m.name;
-        //     let input_type = &m.input_type;
-        //     let output_type = &m.output_type;
+        let direct_client_name = &service.direct_client_name;
+        let mut client_methods = Vec::with_capacity(service.methods.len());
+        for m in &service.methods {
+            let name = &m.name;
+            let input_type = &m.input_type;
+            let output_type = &m.output_type;
 
-        //     client_methods.push(quote! {
-        //         async fn #name(&self, req: twirp::Request<#input_type>) -> Result<twirp::Response<#output_type>, twirp:TwirpErrorResponse> {
-        //             self.0.#name(req).await
-        //         }
-        //     })
-        // }
-        // let direct_client = quote! {
-        //     #[derive(Clone)]
-        //     pub struct #direct_client_name<T>(pub T) where T : #rpc_trait_name;
+            client_methods.push(quote! {
+                async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::Result<twirp::Response<#output_type>> {
+                    self.0.#name(req).await
+                }
+            })
+        }
+        let direct_client = quote! {
+            #[derive(Clone)]
+            pub struct #direct_client_name<T>(pub T) where T : #rpc_trait_name;
 
-        //     #[twirp::async_trait::async_trait]
-        //     impl<T> #rpc_trait_name for #direct_client_name<T> where T: #rpc_trait_name {
-        //         #(#client_methods)*
-        //     }
-        // };
+            #[twirp::async_trait::async_trait]
+            impl<T> #rpc_trait_name for #direct_client_name<T> where T: #rpc_trait_name {
+                #(#client_methods)*
+            }
+        };
 
         // generate the service and client as a single file. run it through
         // prettyplease before outputting it.
@@ -216,7 +216,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 
             #client_trait
 
-            // #direct_client
+            #direct_client
         };
 
         let ast: syn::File = syn::parse2(generated)

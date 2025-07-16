@@ -15,7 +15,8 @@ pub mod service {
 }
 
 use crate::service::haberdash::v1::{
-    GetStatusRequest, GetStatusResponse, HaberdasherApi, MakeHatRequest, MakeHatResponse,
+    GetStatusRequest, GetStatusResponse, HaberdasherApi, HaberdasherApiDirectClient,
+    MakeHatRequest, MakeHatResponse,
 };
 
 /// Demonstrates a client that uses a server implementation directly.
@@ -32,39 +33,28 @@ pub async fn main() -> Result<(), GenericError> {
     Ok(())
 }
 
-#[derive(Clone)]
-pub struct HaberdasherApiDirectClient<T>(pub T)
-where
-    T: HaberdasherApi;
-#[twirp::async_trait::async_trait]
-impl<T> HaberdasherApi for HaberdasherApiDirectClient<T>
-where
-    T: HaberdasherApi,
-{
-    async fn make_hat(
-        &self,
-        req: twirp::Request<MakeHatRequest>,
-    ) -> Result<twirp::Response<MakeHatResponse>, twirp::TwirpErrorResponse> {
-        let res = self
-            .0
-            .make_hat(req)
-            .await
-            .map_err(|err| err.into_twirp_response().into_body())?;
-        Ok(res)
-    }
-    async fn get_status(
-        &self,
-        req: twirp::Request<GetStatusRequest>,
-    ) -> Result<twirp::Response<GetStatusResponse>, twirp::TwirpErrorResponse> {
-        let res = self
-            .0
-            .get_status(req)
-            .await
-            .map_err(|err| err.into_twirp_response().into_body())?;
-        Ok(res)
-        // Ok(self.0.get_status(req).await?)
-    }
-}
+// #[derive(Clone)]
+// pub struct HaberdasherApiDirectClient<T>(pub T)
+// where
+//     T: HaberdasherApi;
+// #[twirp::async_trait::async_trait]
+// impl<T> HaberdasherApi for HaberdasherApiDirectClient<T>
+// where
+//     T: HaberdasherApi,
+// {
+//     async fn make_hat(
+//         &self,
+//         req: twirp::Request<MakeHatRequest>,
+//     ) -> twirp::Result<twirp::Response<MakeHatResponse>> {
+//         self.0.make_hat(req).await
+//     }
+//     async fn get_status(
+//         &self,
+//         req: twirp::Request<GetStatusRequest>,
+//     ) -> twirp::Result<twirp::Response<GetStatusResponse>> {
+//         self.0.get_status(req).await
+//     }
+// }
 
 #[derive(Debug, Error)]
 pub enum CustomError {
