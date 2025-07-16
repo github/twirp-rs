@@ -9,7 +9,7 @@ pub mod test;
 #[doc(hidden)]
 pub mod details;
 
-pub use client::{Client, ClientBuilder, ClientError, Middleware, Next, Result};
+pub use client::{Client, ClientBuilder, Middleware, Next};
 pub use error::*; // many constructors like `invalid_argument()`
 pub use http::{Extensions, Request, Response};
 
@@ -25,6 +25,8 @@ pub use url;
 /// Re-export of `axum::Router`, the type that encapsulates a server-side implementation of a Twirp
 /// service.
 pub use axum::Router;
+
+pub type Result<T, E = TwirpErrorResponse> = std::result::Result<T, E>;
 
 pub(crate) fn serialize_proto_message<T>(m: T) -> Vec<u8>
 where

@@ -8,7 +8,7 @@ use twirp::axum::body::Body;
 use twirp::axum::http;
 use twirp::axum::middleware::{self, Next};
 use twirp::axum::routing::get;
-use twirp::{invalid_argument, IntoTwirpResponse, Router, TwirpErrorResponse};
+use twirp::{invalid_argument, Router};
 
 pub mod service {
     pub mod haberdash {
@@ -63,34 +63,19 @@ pub async fn main() {
 #[derive(Clone)]
 struct HaberdasherApiServer;
 
-#[derive(Debug, PartialEq)]
-enum HatError {
-    InvalidSize,
-}
-
-impl IntoTwirpResponse for HatError {
-    fn into_twirp_response(self) -> http::Response<TwirpErrorResponse> {
-        match self {
-            HatError::InvalidSize => invalid_argument("inches").into_twirp_response(),
-        }
-    }
-}
-
 #[async_trait]
 impl haberdash::HaberdasherApi for HaberdasherApiServer {
-    type Error = HatError;
-
     async fn make_hat(
         &self,
         req: http::Request<MakeHatRequest>,
-    ) -> Result<http::Response<MakeHatResponse>, HatError> {
+    ) -> Result<http::Response<MakeHatResponse>, twirp::TwirpErrorResponse> {
         if let Some(rid) = req.extensions().get::<RequestId>() {
             println!("got request_id: {rid:?}");
         }
 
         let data = req.into_body();
         if data.inches == 0 {
-            return Err(HatError::InvalidSize);
+            return Err(invalid_argument("inches must be greater than 0"));
         }
 
         println!("got {data:?}");
@@ -114,7 +99,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
     async fn get_status(
         &self,
         _req: http::Request<GetStatusRequest>,
-    ) -> Result<http::Response<GetStatusResponse>, HatError> {
+    ) -> Result<http::Response<GetStatusResponse>, twirp::TwirpErrorResponse> {
         Ok(http::Response::new(GetStatusResponse {
             status: "making hats".to_string(),
         }))
@@ -181,7 +166,7 @@ mod test {
             .await;
         assert!(res.is_err());
         let err = res.unwrap_err();
-        assert_eq!(err, HatError::InvalidSize);
+        assert_eq!(err.msg, "inches must be greater than 0");
     }
 
     /// A running network server task, bound to an arbitrary port on localhost, chosen by the OS
@@ -239,7 +224,7 @@ mod test {
         let server = NetServer::start(api_impl).await;
 
         let url = Url::parse(&format!("http://localhost:{}/twirp/", server.port)).unwrap();
-        let client = Client::from_base_url(url).unwrap();
+        let client = Client::from_base_url(url);
         let resp = client
             .make_hat(http::Request::new(MakeHatRequest { inches: 1 }))
             .await;

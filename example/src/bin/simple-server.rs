@@ -3,7 +3,7 @@ use std::time::UNIX_EPOCH;
 
 use twirp::async_trait::async_trait;
 use twirp::axum::routing::get;
-use twirp::{invalid_argument, Router, TwirpErrorResponse};
+use twirp::{invalid_argument, Router};
 
 pub mod service {
     pub mod haberdash {
@@ -56,12 +56,10 @@ struct HaberdasherApiServer;
 
 #[async_trait]
 impl haberdash::HaberdasherApi for HaberdasherApiServer {
-    type Error = TwirpErrorResponse;
-
     async fn make_hat(
         &self,
         req: twirp::Request<MakeHatRequest>,
-    ) -> Result<twirp::Response<MakeHatResponse>, TwirpErrorResponse> {
+    ) -> Result<twirp::Response<MakeHatResponse>, twirp::TwirpErrorResponse> {
         let data = req.into_body();
         if data.inches == 0 {
             return Err(invalid_argument("inches"));
@@ -88,7 +86,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
     async fn get_status(
         &self,
         _req: twirp::Request<GetStatusRequest>,
-    ) -> Result<twirp::Response<GetStatusResponse>, TwirpErrorResponse> {
+    ) -> Result<twirp::Response<GetStatusResponse>, twirp::TwirpErrorResponse> {
         Ok(twirp::Response::new(GetStatusResponse {
             status: "making hats".to_string(),
         }))
@@ -186,7 +184,7 @@ mod test {
         let server = NetServer::start(api_impl).await;
 
         let url = Url::parse(&format!("http://localhost:{}/twirp/", server.port)).unwrap();
-        let client = Client::from_base_url(url).unwrap();
+        let client = Client::from_base_url(url);
         let resp = client
             .make_hat(twirp::Request::new(MakeHatRequest { inches: 1 }))
             .await;

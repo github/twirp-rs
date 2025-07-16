@@ -77,6 +77,17 @@ macro_rules! twirp_error_codes {
             }
         }
 
+        impl From<StatusCode> for TwirpErrorCode {
+            fn from(code: StatusCode) -> Self {
+                $(
+                    if code == $num {
+                        return TwirpErrorCode::$konst;
+                    }
+                )+
+                return TwirpErrorCode::Unknown
+            }
+        }
+
         $(
         pub fn $phrase<T: ToString>(msg: T) -> TwirpErrorResponse {
             TwirpErrorResponse {
@@ -187,6 +198,40 @@ impl TwirpErrorResponse {
         let json =
             serde_json::to_string(&self).expect("JSON serialization of an error should not fail");
         Body::new(json)
+    }
+}
+
+// twirp response from server failed to decode
+impl From<prost::DecodeError> for TwirpErrorResponse {
+    fn from(e: prost::DecodeError) -> Self {
+        unavailable(e.to_string())
+    }
+}
+
+// unable to build the request
+impl From<reqwest::Error> for TwirpErrorResponse {
+    fn from(e: reqwest::Error) -> Self {
+        malformed(e.to_string())
+    }
+}
+
+// twirp error response from server was invalid
+impl From<serde_json::Error> for TwirpErrorResponse {
+    fn from(e: serde_json::Error) -> Self {
+        unavailable(e.to_string())
+    }
+}
+
+// Failed modify the request url
+impl From<url::ParseError> for TwirpErrorResponse {
+    fn from(e: url::ParseError) -> Self {
+        malformed(e.to_string())
+    }
+}
+
+impl From<header::InvalidHeaderValue> for TwirpErrorResponse {
+    fn from(e: header::InvalidHeaderValue) -> Self {
+        malformed(e.to_string())
     }
 }
 

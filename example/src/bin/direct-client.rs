@@ -15,8 +15,7 @@ pub mod service {
 }
 
 use crate::service::haberdash::v1::{
-    GetStatusRequest, GetStatusResponse, HaberdasherApi, HaberdasherApiDirectClient,
-    MakeHatRequest, MakeHatResponse,
+    GetStatusRequest, GetStatusResponse, HaberdasherApi, MakeHatRequest, MakeHatResponse,
 };
 
 /// Demonstrates a client that uses a server implementation directly.
@@ -33,41 +32,39 @@ pub async fn main() -> Result<(), GenericError> {
     Ok(())
 }
 
-// #[derive(Clone)]
-// pub struct HaberdasherApiDirectClient<T>(pub T)
-// where
-//     T: HaberdasherApi;
-// #[twirp::async_trait::async_trait]
-// impl<T> HaberdasherApi for HaberdasherApiDirectClient<T>
-// where
-//     T: HaberdasherApi,
-//     <T as HaberdasherApi>::Error: twirp::IntoTwirpResponse,
-// {
-//     type Error = twirp::ClientError;
-//     async fn make_hat(
-//         &self,
-//         req: twirp::Request<MakeHatRequest>,
-//     ) -> Result<twirp::Response<MakeHatResponse>, twirp::ClientError> {
-//         let res = self
-//             .0
-//             .make_hat(req)
-//             .await
-//             .map_err(|err| err.into_twirp_response().into_body())?;
-//         Ok(res)
-//     }
-//     async fn get_status(
-//         &self,
-//         req: twirp::Request<GetStatusRequest>,
-//     ) -> Result<twirp::Response<GetStatusResponse>, twirp::ClientError> {
-//         let res = self
-//             .0
-//             .get_status(req)
-//             .await
-//             .map_err(|err| err.into_twirp_response().into_body())?;
-//         Ok(res)
-//         // Ok(self.0.get_status(req).await?)
-//     }
-// }
+#[derive(Clone)]
+pub struct HaberdasherApiDirectClient<T>(pub T)
+where
+    T: HaberdasherApi;
+#[twirp::async_trait::async_trait]
+impl<T> HaberdasherApi for HaberdasherApiDirectClient<T>
+where
+    T: HaberdasherApi,
+{
+    async fn make_hat(
+        &self,
+        req: twirp::Request<MakeHatRequest>,
+    ) -> Result<twirp::Response<MakeHatResponse>, twirp::TwirpErrorResponse> {
+        let res = self
+            .0
+            .make_hat(req)
+            .await
+            .map_err(|err| err.into_twirp_response().into_body())?;
+        Ok(res)
+    }
+    async fn get_status(
+        &self,
+        req: twirp::Request<GetStatusRequest>,
+    ) -> Result<twirp::Response<GetStatusResponse>, twirp::TwirpErrorResponse> {
+        let res = self
+            .0
+            .get_status(req)
+            .await
+            .map_err(|err| err.into_twirp_response().into_body())?;
+        Ok(res)
+        // Ok(self.0.get_status(req).await?)
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum CustomError {
@@ -92,17 +89,13 @@ struct HaberdasherApiServer;
 
 #[async_trait]
 impl HaberdasherApi for HaberdasherApiServer {
-    type Error = CustomError;
-
     async fn make_hat(
         &self,
         req: twirp::Request<MakeHatRequest>,
-    ) -> Result<twirp::Response<MakeHatResponse>, Self::Error> {
+    ) -> Result<twirp::Response<MakeHatResponse>, twirp::TwirpErrorResponse> {
         let data = req.into_body();
         if data.inches == 0 {
-            return Err(CustomError::InvalidArgument(
-                "inches must be greater than 0".to_string(),
-            ));
+            return Err(invalid_argument("inches must be greater than 0"));
         }
 
         let ts = std::time::SystemTime::now()
@@ -123,7 +116,7 @@ impl HaberdasherApi for HaberdasherApiServer {
     async fn get_status(
         &self,
         _req: twirp::Request<GetStatusRequest>,
-    ) -> Result<twirp::Response<GetStatusResponse>, Self::Error> {
+    ) -> Result<twirp::Response<GetStatusResponse>, twirp::TwirpErrorResponse> {
         Ok(twirp::Response::new(GetStatusResponse {
             status: "making hats".to_string(),
         }))

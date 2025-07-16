@@ -1,7 +1,7 @@
 use twirp::async_trait::async_trait;
 use twirp::client::{Client, ClientBuilder, Middleware, Next};
 use twirp::url::Url;
-use twirp::{GenericError, Request};
+use twirp::{GenericError, Request, TwirpErrorResponse};
 
 pub mod service {
     pub mod haberdash {
@@ -29,7 +29,7 @@ use service::haberdash::v1::{
 #[tokio::main]
 pub async fn main() -> Result<(), GenericError> {
     // basic client
-    let client = Client::from_base_url(Url::parse("http://localhost:3000/twirp/")?)?;
+    let client = Client::from_base_url(Url::parse("http://localhost:3000/twirp/")?);
     let resp = client
         .make_hat(Request::new(MakeHatRequest { inches: 1 }))
         .await;
@@ -42,7 +42,7 @@ pub async fn main() -> Result<(), GenericError> {
     )
     .with(RequestHeaders { hmac_key: None })
     .with(PrintResponseHeaders {})
-    .build()?;
+    .build();
     let resp = client
         .with_host("localhost")
         .make_hat(Request::new(MakeHatRequest { inches: 1 }))
@@ -62,7 +62,7 @@ impl Middleware for RequestHeaders {
         &self,
         mut req: twirp::reqwest::Request,
         next: Next<'_>,
-    ) -> twirp::client::Result<twirp::reqwest::Response> {
+    ) -> twirp::Result<twirp::reqwest::Response> {
         req.headers_mut().append("x-request-id", "XYZ".try_into()?);
         if let Some(_hmac_key) = &self.hmac_key {
             req.headers_mut()
@@ -81,7 +81,7 @@ impl Middleware for PrintResponseHeaders {
         &self,
         req: twirp::reqwest::Request,
         next: Next<'_>,
-    ) -> twirp::client::Result<twirp::reqwest::Response> {
+    ) -> twirp::Result<twirp::reqwest::Response> {
         let res = next.run(req).await?;
         eprintln!("Response headers: {res:?}");
         Ok(res)
@@ -94,19 +94,17 @@ struct MockHaberdasherApiClient;
 
 #[async_trait]
 impl HaberdasherApi for MockHaberdasherApiClient {
-    type Error = twirp::client::ClientError;
-
     async fn make_hat(
         &self,
         _req: Request<MakeHatRequest>,
-    ) -> Result<twirp::Response<MakeHatResponse>, Self::Error> {
+    ) -> Result<twirp::Response<MakeHatResponse>, TwirpErrorResponse> {
         todo!()
     }
 
     async fn get_status(
         &self,
         _req: Request<GetStatusRequest>,
-    ) -> Result<twirp::Response<GetStatusResponse>, Self::Error> {
+    ) -> Result<twirp::Response<GetStatusResponse>, TwirpErrorResponse> {
         todo!()
     }
 }
