@@ -1,6 +1,7 @@
 //! Implement [Twirp](https://twitchtv.github.io/twirp/) error responses
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use axum::body::Body;
 use axum::response::IntoResponse;
@@ -96,6 +97,8 @@ macro_rules! twirp_error_codes {
                 code: TwirpErrorCode::$konst,
                 msg: msg.to_string(),
                 meta: Default::default(),
+                rust_error: None,
+                retry_after: None,
             }
         }
         )+
@@ -189,9 +192,27 @@ pub struct TwirpErrorResponse {
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(default)]
     pub meta: HashMap<String, String>,
+
+    /// Debug form of the underlying Rust error.
+    ///
+    /// NOT returned to clients.
+    rust_error: Option<String>,
+
+    /// How long client should wait before retrying. This should be present only if the response is an HTTP 429 or 503.
+    retry_after: Option<Duration>,
 }
 
 impl TwirpErrorResponse {
+    pub fn new(code: TwirpErrorCode, msg: String) -> Self {
+        Self {
+            code,
+            msg,
+            meta: HashMap::new(),
+            rust_error: None,
+            retry_after: None,
+        }
+    }
+
     pub fn insert_meta(&mut self, key: String, value: String) -> Option<String> {
         self.meta.insert(key, value)
     }
@@ -201,6 +222,37 @@ impl TwirpErrorResponse {
             serde_json::to_string(&self).expect("JSON serialization of an error should not fail");
         Body::new(json)
     }
+
+    pub fn retry_after(&self) -> Option<Duration> {
+        self.retry_after
+    }
+
+    pub fn with_rust_error<E: std::error::Error>(self, err: E) -> Self {
+        self.with_rust_error_string(format!("{err:?}"))
+    }
+
+    pub fn with_rust_error_string(mut self, rust_error: String) -> Self {
+        self.rust_error = Some(rust_error);
+        self
+    }
+
+    pub fn with_retry_after(mut self, duration: impl Into<Option<Duration>>) -> Self {
+        let duration = duration.into();
+        self.retry_after = duration.map(|d| {
+            // Ensure that the duration is at least 1 second, as per HTTP spec.
+            if d.as_secs() < 1 {
+                Duration::from_secs(1)
+            } else {
+                d
+            }
+        });
+        self
+    }
+}
+
+/// Shorthand for an internal server error triggered by a Rust error.
+pub fn internal_server_error<E: std::error::Error>(err: E) -> TwirpErrorResponse {
+    internal("internal server error").with_rust_error(err)
 }
 
 // twirp response from server failed to decode
@@ -259,7 +311,23 @@ impl IntoResponse for TwirpErrorResponse {
 
 impl std::fmt::Display for TwirpErrorResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.code.twirp_code(), self.msg)
+        write!(f, "error {:?}: {}", self.code, self.msg)?;
+        if !self.meta.is_empty() {
+            write!(f, " (meta: {{")?;
+            let mut first = true;
+            for (k, v) in &self.meta {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{k:?}: {v:?}")?;
+                first = false;
+            }
+            write!(f, "}})")?;
+        }
+        if let Some(ref rust_error) = self.rust_error {
+            write!(f, " (rust_error: {:?})", rust_error)?;
+        }
+        Ok(())
     }
 }
 
@@ -306,6 +374,8 @@ mod test {
             code: TwirpErrorCode::DeadlineExceeded,
             msg: "test".to_string(),
             meta: Default::default(),
+            rust_error: None,
+            retry_after: None,
         };
 
         let result = serde_json::to_string(&response).unwrap();

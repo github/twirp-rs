@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec;
 
@@ -176,11 +175,10 @@ impl Client {
                 // TODO: Should middleware response extensions and headers be included in the error case?
                 Err(serde_json::from_slice(&response.bytes().await?)?)
             }
-            (status, ct) => Err(TwirpErrorResponse {
-                code: status.into(),
-                msg: format!("Unexpected content type: {:?}", ct),
-                meta: HashMap::new(),
-            }),
+            (status, ct) => Err(TwirpErrorResponse::new(
+                status.into(),
+                format!("unexpected content type: {:?}", ct),
+            )),
         }
     }
 }
