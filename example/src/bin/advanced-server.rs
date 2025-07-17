@@ -68,7 +68,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
     async fn make_hat(
         &self,
         req: http::Request<MakeHatRequest>,
-    ) -> Result<http::Response<MakeHatResponse>, twirp::TwirpErrorResponse> {
+    ) -> twirp::Result<http::Response<MakeHatResponse>> {
         if let Some(rid) = req.extensions().get::<RequestId>() {
             println!("got request_id: {rid:?}");
         }
@@ -99,7 +99,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
     async fn get_status(
         &self,
         _req: http::Request<GetStatusRequest>,
-    ) -> Result<http::Response<GetStatusResponse>, twirp::TwirpErrorResponse> {
+    ) -> twirp::Result<http::Response<GetStatusResponse>> {
         Ok(http::Response::new(GetStatusResponse {
             status: "making hats".to_string(),
         }))

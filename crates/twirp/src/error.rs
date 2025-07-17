@@ -184,7 +184,7 @@ impl Serialize for TwirpErrorCode {
     }
 }
 
-// Twirp error responses are always JSON
+// Twirp error responses are always sent as JSON.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Error)]
 pub struct TwirpErrorResponse {
     pub code: TwirpErrorCode,
@@ -193,13 +193,14 @@ pub struct TwirpErrorResponse {
     #[serde(default)]
     pub meta: HashMap<String, String>,
 
+    /// (Optional) How long client should wait before retrying. This should be present only if the response is an HTTP
+    /// 429 or 503.
+    retry_after: Option<Duration>,
+
     /// Debug form of the underlying Rust error.
     ///
     /// NOT returned to clients.
     rust_error: Option<String>,
-
-    /// How long client should wait before retrying. This should be present only if the response is an HTTP 429 or 503.
-    retry_after: Option<Duration>,
 }
 
 impl TwirpErrorResponse {

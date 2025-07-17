@@ -83,7 +83,7 @@ struct HaberdasherApiServer;
 
 #[async_trait]
 impl haberdash::HaberdasherApi for HaberdasherApiServer {
-    async fn make_hat(&self, req: Request<MakeHatRequest>) -> Result<Response<MakeHatResponse>, TwirpErrorResponse> {
+    async fn make_hat(&self, req: twirp::Request<MakeHatRequest>) -> twirp::Result<twirp::Response<MakeHatResponse>> {
         todo!()
     }
 }
@@ -107,7 +107,7 @@ use haberdash::{HaberdasherApiClient, MakeHatRequest, MakeHatResponse};
 #[tokio::main]
 pub async fn main() {
     let client = Client::from_base_url(Url::parse("http://localhost:3000/twirp/")?)?;
-    let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
-    eprintln!("{:?}", resp);
+    let resp = client.make_hat(twirp:Request::new(MakeHatRequest { inches: 1 })).await;
+    eprintln!("{:?}", resp.into_body());
 }
 ```

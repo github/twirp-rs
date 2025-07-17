@@ -1,7 +1,7 @@
 use twirp::async_trait::async_trait;
 use twirp::client::{Client, ClientBuilder, Middleware, Next};
 use twirp::url::Url;
-use twirp::{GenericError, Request, TwirpErrorResponse};
+use twirp::{GenericError, Request};
 
 pub mod service {
     pub mod haberdash {
@@ -97,14 +97,14 @@ impl HaberdasherApi for MockHaberdasherApiClient {
     async fn make_hat(
         &self,
         _req: Request<MakeHatRequest>,
-    ) -> Result<twirp::Response<MakeHatResponse>, TwirpErrorResponse> {
+    ) -> twirp::Result<twirp::Response<MakeHatResponse>> {
         todo!()
     }
 
     async fn get_status(
         &self,
         _req: Request<GetStatusRequest>,
-    ) -> Result<twirp::Response<GetStatusResponse>, TwirpErrorResponse> {
+    ) -> twirp::Result<twirp::Response<GetStatusResponse>> {
         todo!()
     }
 }

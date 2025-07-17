@@ -85,10 +85,7 @@ pub struct TestApiServer;
 
 #[async_trait]
 impl TestApi for TestApiServer {
-    async fn ping(
-        &self,
-        req: http::Request<PingRequest>,
-    ) -> Result<http::Response<PingResponse>, TwirpErrorResponse> {
+    async fn ping(&self, req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>> {
         let request_id = req.extensions().get::<RequestId>().cloned();
         let data = req.into_body();
         if let Some(RequestId(rid)) = request_id {
@@ -100,10 +97,7 @@ impl TestApi for TestApiServer {
         }
     }
 
-    async fn boom(
-        &self,
-        _: http::Request<PingRequest>,
-    ) -> Result<http::Response<PingResponse>, TwirpErrorResponse> {
+    async fn boom(&self, _: http::Request<PingRequest>) -> Result<http::Response<PingResponse>> {
         Err(error::internal("boom!"))
     }
 }
@@ -131,14 +125,8 @@ impl TestApiClient for Client {
 
 #[async_trait]
 pub trait TestApi {
-    async fn ping(
-        &self,
-        req: http::Request<PingRequest>,
-    ) -> Result<http::Response<PingResponse>, TwirpErrorResponse>;
-    async fn boom(
-        &self,
-        req: http::Request<PingRequest>,
-    ) -> Result<http::Response<PingResponse>, TwirpErrorResponse>;
+    async fn ping(&self, req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>>;
+    async fn boom(&self, req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

@@ -59,7 +59,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
     async fn make_hat(
         &self,
         req: twirp::Request<MakeHatRequest>,
-    ) -> Result<twirp::Response<MakeHatResponse>, twirp::TwirpErrorResponse> {
+    ) -> twirp::Result<twirp::Response<MakeHatResponse>> {
         let data = req.into_body();
         if data.inches == 0 {
             return Err(invalid_argument("inches"));
@@ -86,7 +86,7 @@ impl haberdash::HaberdasherApi for HaberdasherApiServer {
     async fn get_status(
         &self,
         _req: twirp::Request<GetStatusRequest>,
-    ) -> Result<twirp::Response<GetStatusResponse>, twirp::TwirpErrorResponse> {
+    ) -> twirp::Result<twirp::Response<GetStatusResponse>> {
         Ok(twirp::Response::new(GetStatusResponse {
             status: "making hats".to_string(),
         }))
