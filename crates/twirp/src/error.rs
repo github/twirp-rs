@@ -153,23 +153,29 @@ impl Serialize for TwirpErrorCode {
     }
 }
 
-// Twirp error responses are always sent as JSON.
+/// A Twirp error response meeting the spec: https://twitchtv.github.io/twirp/docs/spec_v7.html#error-codes.
+///
+/// NOTE: Twirp error responses are always sent as JSON.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Error)]
 pub struct TwirpErrorResponse {
+    /// One of the Twirp error codes.
     pub code: TwirpErrorCode,
+
+    /// A human-readable message describing the error.
     pub msg: String,
+
+    /// (Optional) An object with string values holding arbitrary additional metadata describing the error.
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(default)]
     pub meta: HashMap<String, String>,
 
-    /// (Optional) How long client should wait before retrying. This should be present only if the response is an HTTP
-    /// 429 or 503.
+    /// (Optional) How long clients should wait before retrying. If set, will be included in the `Retry-After` response
+    /// header. Generally only valid for HTTP 429 or 503 responses. NOTE: This is *not* technically part of the twirp
+    /// spec.
     #[serde(skip_serializing)]
     retry_after: Option<Duration>,
 
-    /// Debug form of the underlying Rust error.
-    ///
-    /// NOT returned to clients.
+    /// Debug form of the underlying Rust error (if any). NOT returned to clients.
     #[serde(skip_serializing)]
     rust_error: Option<String>,
 }
