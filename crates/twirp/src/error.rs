@@ -5,41 +5,10 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::response::IntoResponse;
-use http::header::{self, HeaderMap, HeaderValue};
+use http::header::{self};
 use hyper::{Response, StatusCode};
 use serde::{Deserialize, Serialize, Serializer};
 use thiserror::Error;
-
-// TODO: I think we should remove this
-//
-/// Trait for user-defined error types that can be converted to Twirp responses.
-pub trait IntoTwirpResponse {
-    /// Generate a Twirp response. The return type is the `http::Response` type, with a
-    /// [`TwirpErrorResponse`] as the body. The simplest way to implement this is:
-    ///
-    /// ```
-    /// use axum::body::Body;
-    /// use http::Response;
-    /// use twirp::{TwirpErrorResponse, IntoTwirpResponse};
-    /// # struct MyError { message: String }
-    ///
-    /// impl IntoTwirpResponse for MyError {
-    ///     fn into_twirp_response(self) -> Response<TwirpErrorResponse> {
-    ///         // Use TwirpErrorResponse to generate a valid starting point
-    ///         let mut response = twirp::invalid_argument(&self.message)
-    ///             .into_twirp_response();
-    ///
-    ///         // Customize the response as desired.
-    ///         response.headers_mut().insert("X-Server-Pid", std::process::id().into());
-    ///         response
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// The `Response` that `TwirpErrorResponse` generates can be used as a starting point,
-    /// adding headers and extensions to it.
-    fn into_twirp_response(self) -> Response<TwirpErrorResponse>;
-}
 
 /// Alias for a generic error
 pub type GenericError = Box<dyn std::error::Error + Send + Sync>;
@@ -185,7 +154,7 @@ impl Serialize for TwirpErrorCode {
 }
 
 // Twirp error responses are always sent as JSON.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Error)]
 pub struct TwirpErrorResponse {
     pub code: TwirpErrorCode,
     pub msg: String,
@@ -216,12 +185,6 @@ impl TwirpErrorResponse {
 
     pub fn insert_meta(&mut self, key: String, value: String) -> Option<String> {
         self.meta.insert(key, value)
-    }
-
-    pub fn into_axum_body(self) -> Body {
-        let json =
-            serde_json::to_string(&self).expect("JSON serialization of an error should not fail");
-        Body::new(json)
     }
 
     pub fn retry_after(&self) -> Option<Duration> {
@@ -291,22 +254,21 @@ impl From<header::InvalidHeaderValue> for TwirpErrorResponse {
     }
 }
 
-impl IntoTwirpResponse for TwirpErrorResponse {
-    fn into_twirp_response(self) -> Response<TwirpErrorResponse> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
-
-        let code = self.code.http_status_code();
-        (code, headers).into_response().map(|_| self)
-    }
-}
-
 impl IntoResponse for TwirpErrorResponse {
     fn into_response(self) -> Response<Body> {
-        self.into_twirp_response().map(|err| err.into_axum_body())
+        let mut resp = Response::builder()
+            .status(self.code.http_status_code())
+            .extension(self.clone())
+            .header(header::CONTENT_TYPE, "application/json");
+
+        if let Some(duration) = self.retry_after {
+            resp = resp.header("retry-after", duration.as_secs().to_string());
+        }
+
+        resp.body(Body::new(serde_json::to_string(&self).expect(
+            "json serialization of a TwirpErrorResponse should not fail",
+        )))
+        .expect("failed to build twirp error response")
     }
 }
 
