@@ -231,6 +231,12 @@ impl TwirpErrorResponse {
                 d
             }
         });
+        if let Some(ref retry_after) = self.retry_after {
+            self.meta
+                .insert("retry_after".to_string(), retry_after.as_secs().to_string());
+        } else {
+            self.meta.remove("retry_after");
+        }
         self
     }
 }
