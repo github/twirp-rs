@@ -272,8 +272,8 @@ impl From<header::InvalidHeaderValue> for TwirpErrorResponse {
 impl IntoResponse for TwirpErrorResponse {
     fn into_response(self) -> Response<Body> {
         let mut resp = Response::builder()
-            .status(self.code.http_status_code())
-            .extension(self.clone())
+            .status(self.http_status_code())
+            .extension(self.clone()) // NB: Include the original error in the response extensions so that axum layers can extract (e.g. for logging)
             .header(header::CONTENT_TYPE, "application/json");
 
         if let Some(duration) = self.retry_after {
