@@ -136,7 +136,6 @@ impl Client {
         if let Some(host) = &self.host {
             url.set_host(Some(host))?
         };
-        // let path = url.path().to_string();
         let (parts, body) = req.into_parts();
         let request = self
             .http_client
@@ -225,12 +224,7 @@ impl<'a> Next<'a> {
             self.middlewares = rest;
             Box::pin(current.handle(req, self))
         } else {
-            Box::pin(async move {
-                self.client
-                    .execute(req)
-                    .await
-                    .map_err(TwirpErrorResponse::from)
-            })
+            Box::pin(async move { Ok(self.client.execute(req).await?) })
         }
     }
 }
