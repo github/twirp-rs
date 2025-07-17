@@ -275,6 +275,12 @@ impl From<header::InvalidHeaderValue> for TwirpErrorResponse {
     }
 }
 
+impl From<anyhow::Error> for TwirpErrorResponse {
+    fn from(err: anyhow::Error) -> Self {
+        internal("internal server error").with_rust_error_string(format!("{err:#}"))
+    }
+}
+
 impl IntoResponse for TwirpErrorResponse {
     fn into_response(self) -> Response<Body> {
         let mut resp = Response::builder()

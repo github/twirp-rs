@@ -17,6 +17,7 @@ license-file = "./LICENSE"
 test-support = []
 
 [dependencies]
+anyhow = "1"
 async-trait = "0.1"
 axum = "0.8"
 futures = "0.3"
