@@ -277,13 +277,13 @@ impl IntoResponse for TwirpErrorResponse {
             .header(header::CONTENT_TYPE, "application/json");
 
         if let Some(duration) = self.retry_after {
-            resp = resp.header("retry-after", duration.as_secs().to_string());
+            resp = resp.header(header::RETRY_AFTER, duration.as_secs().to_string());
         }
 
-        resp.body(Body::new(serde_json::to_string(&self).expect(
-            "json serialization of a TwirpErrorResponse should not fail",
-        )))
-        .expect("failed to build twirp error response")
+        let json = serde_json::to_string(&self)
+            .expect("json serialization of a TwirpErrorResponse should not fail");
+        resp.body(Body::new(json))
+            .expect("failed to build TwirpErrorResponse")
     }
 }
 
