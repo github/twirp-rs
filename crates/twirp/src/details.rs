@@ -30,7 +30,7 @@ where
     /// Add a handler for an `rpc` to the router.
     ///
     /// The generated code passes a closure that calls the method, like
-    /// `|api: Arc<HaberdasherApiServer>, req: MakeHatRequest| async move { api.make_hat(req) }`.
+    /// `|api: Arc<HaberdasherApiServer>, req: http::Request<MakeHatRequest>| async move { api.make_hat(req) }`.
     pub fn route<F, Fut, Req, Res>(self, url: &str, f: F) -> Self
     where
         F: Fn(S, http::Request<Req>) -> Fut + Clone + Sync + Send + 'static,

@@ -62,14 +62,10 @@ where
     let (parts, req, resp_fmt) = match parse_request::<In>(req, &mut timings).await {
         Ok(tuple) => tuple,
         Err(err) => {
-            // TODO: Capture original error in the response extensions. E.g.:
-            // resp_exts
-            //     .lock()
-            //     .expect("mutex poisoned")
-            //     .insert(RequestError(err));
-            let mut twirp_err = error::malformed("bad request");
-            twirp_err.insert_meta("error".to_string(), err.to_string());
-            return twirp_err.into_response();
+            return error::malformed("bad request")
+                .with_meta("error", &err.to_string())
+                .with_generic_error(err)
+                .into_response();
         }
     };
 
@@ -80,10 +76,10 @@ where
     let mut resp = match write_response(res, resp_fmt) {
         Ok(resp) => resp,
         Err(err) => {
-            // TODO: Capture original error in the response extensions.
-            let mut twirp_err = error::unknown("error serializing response");
-            twirp_err.insert_meta("error".to_string(), err.to_string());
-            return twirp_err.into_response();
+            return error::internal("error serializing response")
+                .with_meta("error", &err.to_string())
+                .with_generic_error(err)
+                .into_response();
         }
     };
     timings.set_response_written();
@@ -290,14 +286,8 @@ mod tests {
         assert!(resp.status().is_client_error(), "{:?}", resp);
         let data = read_err_body(resp.into_body()).await;
 
-        // TODO: I think malformed should return some info about what was wrong
-        // with the request, but we don't want to leak server errors that have
-        // other details.
-        let mut expected = error::malformed("bad request");
-        expected.insert_meta(
-            "error".to_string(),
-            "EOF while parsing a value at line 1 column 0".to_string(),
-        );
+        let expected = error::malformed("bad request")
+            .with_meta("error", "EOF while parsing a value at line 1 column 0");
         assert_eq!(data, expected);
     }
 

@@ -164,11 +164,13 @@ pub struct TwirpErrorResponse {
 
     /// (Optional) How long client should wait before retrying. This should be present only if the response is an HTTP
     /// 429 or 503.
+    #[serde(skip_serializing)]
     retry_after: Option<Duration>,
 
     /// Debug form of the underlying Rust error.
     ///
     /// NOT returned to clients.
+    #[serde(skip_serializing)]
     rust_error: Option<String>,
 }
 
@@ -183,12 +185,25 @@ impl TwirpErrorResponse {
         }
     }
 
-    pub fn insert_meta(&mut self, key: String, value: String) -> Option<String> {
-        self.meta.insert(key, value)
+    pub fn http_status_code(&self) -> StatusCode {
+        self.code.http_status_code()
+    }
+
+    pub fn meta_mut(&mut self) -> &mut HashMap<String, String> {
+        &mut self.meta
+    }
+
+    pub fn with_meta<S: ToString>(mut self, key: S, value: S) -> Self {
+        self.meta.insert(key.to_string(), value.to_string());
+        self
     }
 
     pub fn retry_after(&self) -> Option<Duration> {
         self.retry_after
+    }
+
+    pub fn with_generic_error(self, err: GenericError) -> Self {
+        self.with_rust_error_string(format!("{err:?}"))
     }
 
     pub fn with_rust_error<E: std::error::Error>(self, err: E) -> Self {
@@ -222,35 +237,35 @@ pub fn internal_server_error<E: std::error::Error>(err: E) -> TwirpErrorResponse
 // twirp response from server failed to decode
 impl From<prost::DecodeError> for TwirpErrorResponse {
     fn from(e: prost::DecodeError) -> Self {
-        unavailable(e.to_string())
-    }
-}
-
-// unable to build the request
-impl From<reqwest::Error> for TwirpErrorResponse {
-    fn from(e: reqwest::Error) -> Self {
-        malformed(e.to_string())
+        internal(e.to_string())
     }
 }
 
 // twirp error response from server was invalid
 impl From<serde_json::Error> for TwirpErrorResponse {
     fn from(e: serde_json::Error) -> Self {
-        unavailable(e.to_string())
+        internal(e.to_string())
+    }
+}
+
+// unable to build the request
+impl From<reqwest::Error> for TwirpErrorResponse {
+    fn from(e: reqwest::Error) -> Self {
+        invalid_argument(e.to_string())
     }
 }
 
 // Failed modify the request url
 impl From<url::ParseError> for TwirpErrorResponse {
     fn from(e: url::ParseError) -> Self {
-        malformed(e.to_string())
+        invalid_argument(e.to_string())
     }
 }
 
 // Invalid header value (client middleware examples use this)
 impl From<header::InvalidHeaderValue> for TwirpErrorResponse {
     fn from(e: header::InvalidHeaderValue) -> Self {
-        malformed(e.to_string())
+        invalid_argument(e.to_string())
     }
 }
 
@@ -287,6 +302,9 @@ impl std::fmt::Display for TwirpErrorResponse {
             }
             write!(f, "}})")?;
         }
+        if let Some(ref retry_after) = self.retry_after {
+            write!(f, " (retry_after: {:?})", retry_after)?;
+        }
         if let Some(ref rust_error) = self.rust_error {
             write!(f, " (rust_error: {:?})", rust_error)?;
         }
@@ -296,6 +314,8 @@ impl std::fmt::Display for TwirpErrorResponse {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashMap;
+
     use crate::{TwirpErrorCode, TwirpErrorResponse};
 
     #[test]
@@ -312,6 +332,58 @@ mod test {
         assert_code(TwirpErrorCode::Unimplemented, "unimplemented", 501);
         assert_code(TwirpErrorCode::Internal, "internal", 500);
         assert_code(TwirpErrorCode::Unavailable, "unavailable", 503);
+    }
+
+    #[test]
+    fn http_status_mapping() {
+        assert_eq!(
+            TwirpErrorCode::Canceled.http_status_code(),
+            http::StatusCode::REQUEST_TIMEOUT
+        );
+        assert_eq!(
+            TwirpErrorCode::Unknown.http_status_code(),
+            http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            TwirpErrorCode::InvalidArgument.http_status_code(),
+            http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            TwirpErrorCode::Malformed.http_status_code(),
+            http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            TwirpErrorCode::Unauthenticated.http_status_code(),
+            http::StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            TwirpErrorCode::PermissionDenied.http_status_code(),
+            http::StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            TwirpErrorCode::DeadlineExceeded.http_status_code(),
+            http::StatusCode::REQUEST_TIMEOUT
+        );
+        assert_eq!(
+            TwirpErrorCode::NotFound.http_status_code(),
+            http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            TwirpErrorCode::BadRoute.http_status_code(),
+            http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            TwirpErrorCode::Unimplemented.http_status_code(),
+            http::StatusCode::NOT_IMPLEMENTED
+        );
+        assert_eq!(
+            TwirpErrorCode::Internal.http_status_code(),
+            http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            TwirpErrorCode::Unavailable.http_status_code(),
+            http::StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 
     fn assert_code(code: TwirpErrorCode, msg: &str, http: u16) {
@@ -333,10 +405,14 @@ mod test {
 
     #[test]
     fn twirp_error_response_serialization() {
+        let meta = HashMap::from([
+            ("key1".to_string(), "value1".to_string()),
+            ("key2".to_string(), "value2".to_string()),
+        ]);
         let response = TwirpErrorResponse {
             code: TwirpErrorCode::DeadlineExceeded,
             msg: "test".to_string(),
-            meta: Default::default(),
+            meta,
             rust_error: None,
             retry_after: None,
         };
@@ -344,8 +420,26 @@ mod test {
         let result = serde_json::to_string(&response).unwrap();
         assert!(result.contains(r#""code":"deadline_exceeded""#));
         assert!(result.contains(r#""msg":"test""#));
+        assert!(result.contains(r#""key1":"value1""#));
+        assert!(result.contains(r#""key2":"value2""#));
 
         let result = serde_json::from_str(&result).unwrap();
         assert_eq!(response, result);
+    }
+
+    #[test]
+    fn twirp_error_response_serialization_skips_fields() {
+        let response = TwirpErrorResponse {
+            code: TwirpErrorCode::Unauthenticated,
+            msg: "test".to_string(),
+            meta: HashMap::new(),
+            rust_error: Some("not included".to_string()),
+            retry_after: None,
+        };
+
+        let result = serde_json::to_string(&response).unwrap();
+        assert!(result.contains(r#""code":"unauthenticated""#));
+        assert!(result.contains(r#""msg":"test""#));
+        assert!(!result.contains(r#"rust_error"#));
     }
 }
