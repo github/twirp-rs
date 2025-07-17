@@ -334,58 +334,6 @@ mod test {
         assert_code(TwirpErrorCode::Unavailable, "unavailable", 503);
     }
 
-    #[test]
-    fn http_status_mapping() {
-        assert_eq!(
-            TwirpErrorCode::Canceled.http_status_code(),
-            http::StatusCode::REQUEST_TIMEOUT
-        );
-        assert_eq!(
-            TwirpErrorCode::Unknown.http_status_code(),
-            http::StatusCode::INTERNAL_SERVER_ERROR
-        );
-        assert_eq!(
-            TwirpErrorCode::InvalidArgument.http_status_code(),
-            http::StatusCode::BAD_REQUEST
-        );
-        assert_eq!(
-            TwirpErrorCode::Malformed.http_status_code(),
-            http::StatusCode::BAD_REQUEST
-        );
-        assert_eq!(
-            TwirpErrorCode::Unauthenticated.http_status_code(),
-            http::StatusCode::UNAUTHORIZED
-        );
-        assert_eq!(
-            TwirpErrorCode::PermissionDenied.http_status_code(),
-            http::StatusCode::FORBIDDEN
-        );
-        assert_eq!(
-            TwirpErrorCode::DeadlineExceeded.http_status_code(),
-            http::StatusCode::REQUEST_TIMEOUT
-        );
-        assert_eq!(
-            TwirpErrorCode::NotFound.http_status_code(),
-            http::StatusCode::NOT_FOUND
-        );
-        assert_eq!(
-            TwirpErrorCode::BadRoute.http_status_code(),
-            http::StatusCode::NOT_FOUND
-        );
-        assert_eq!(
-            TwirpErrorCode::Unimplemented.http_status_code(),
-            http::StatusCode::NOT_IMPLEMENTED
-        );
-        assert_eq!(
-            TwirpErrorCode::Internal.http_status_code(),
-            http::StatusCode::INTERNAL_SERVER_ERROR
-        );
-        assert_eq!(
-            TwirpErrorCode::Unavailable.http_status_code(),
-            http::StatusCode::SERVICE_UNAVAILABLE
-        );
-    }
-
     fn assert_code(code: TwirpErrorCode, msg: &str, http: u16) {
         assert_eq!(
             code.http_status_code(),
