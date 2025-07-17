@@ -15,9 +15,6 @@ struct Service {
     /// The name of the server trait, as parsed into a Rust identifier.
     rpc_trait_name: syn::Ident,
 
-    /// The name of the passthrough client.
-    direct_client_name: syn::Ident,
-
     /// The fully qualified protobuf name of this Service.
     fqn: String,
 
@@ -43,7 +40,6 @@ impl Service {
     fn from_prost(s: prost_build::Service) -> Self {
         let fqn = format!("{}.{}", s.package, s.proto_name);
         let rpc_trait_name = format_ident!("{}", &s.name);
-        let direct_client_name = format_ident!("{}DirectClient", &s.name);
         let methods = s
             .methods
             .into_iter()
@@ -52,7 +48,6 @@ impl Service {
 
         Self {
             rpc_trait_name,
-            direct_client_name,
             fqn,
             methods,
         }
@@ -175,33 +170,6 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             }
         };
 
-        //
-        // generate the passthrough client
-        //
-
-        let direct_client_name = &service.direct_client_name;
-        let mut client_methods = Vec::with_capacity(service.methods.len());
-        for m in &service.methods {
-            let name = &m.name;
-            let input_type = &m.input_type;
-            let output_type = &m.output_type;
-
-            client_methods.push(quote! {
-                async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::Result<twirp::Response<#output_type>> {
-                    self.0.#name(req).await
-                }
-            })
-        }
-        let direct_client = quote! {
-            #[derive(Clone)]
-            pub struct #direct_client_name<T>(pub T) where T : #rpc_trait_name;
-
-            #[twirp::async_trait::async_trait]
-            impl<T> #rpc_trait_name for #direct_client_name<T> where T: #rpc_trait_name {
-                #(#client_methods)*
-            }
-        };
-
         // generate the service and client as a single file. run it through
         // prettyplease before outputting it.
         let service_fqn_path = format!("/{}", service.fqn);
@@ -215,8 +183,6 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             #router
 
             #client_trait
-
-            #direct_client
         };
 
         let ast: syn::File = syn::parse2(generated)
