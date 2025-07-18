@@ -265,20 +265,21 @@ impl From<reqwest::Error> for TwirpErrorResponse {
     }
 }
 
-// Failed modify the request url
+// failed modify the request url
 impl From<url::ParseError> for TwirpErrorResponse {
     fn from(e: url::ParseError) -> Self {
         invalid_argument(e.to_string())
     }
 }
 
-// Invalid header value (client middleware examples use this)
+// invalid header value (client middleware examples use this)
 impl From<header::InvalidHeaderValue> for TwirpErrorResponse {
     fn from(e: header::InvalidHeaderValue) -> Self {
         invalid_argument(e.to_string())
     }
 }
 
+// handy for `?` syntax in implementing servers.
 impl From<anyhow::Error> for TwirpErrorResponse {
     fn from(err: anyhow::Error) -> Self {
         internal("internal server error").with_rust_error_string(format!("{err:#}"))
@@ -291,7 +292,7 @@ impl IntoResponse for TwirpErrorResponse {
             .status(self.http_status_code())
             // NB: Add this in the response extensions so that axum layers can extract (e.g. for logging)
             .extension(self.clone())
-            .header(header::CONTENT_TYPE, "application/json");
+            .header(header::CONTENT_TYPE, crate::headers::CONTENT_TYPE_JSON);
 
         if let Some(duration) = self.retry_after {
             resp = resp.header(header::RETRY_AFTER, duration.as_secs().to_string());
