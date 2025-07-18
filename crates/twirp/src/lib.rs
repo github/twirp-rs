@@ -1,5 +1,4 @@
 pub mod client;
-pub mod context;
 pub mod error;
 pub mod headers;
 pub mod server;
@@ -10,10 +9,9 @@ pub mod test;
 #[doc(hidden)]
 pub mod details;
 
-pub use client::{Client, ClientBuilder, ClientError, Middleware, Next, Result};
-pub use context::Context;
+pub use client::{Client, ClientBuilder, Middleware, Next};
 pub use error::*; // many constructors like `invalid_argument()`
-pub use http::Extensions;
+pub use http::{Extensions, Request, Response};
 
 // Re-export this crate's dependencies that users are likely to code against. These can be used to
 // import the exact versions of these libraries `twirp` is built with -- useful if your project is
@@ -27,6 +25,8 @@ pub use url;
 /// Re-export of `axum::Router`, the type that encapsulates a server-side implementation of a Twirp
 /// service.
 pub use axum::Router;
+
+pub type Result<T, E = TwirpErrorResponse> = std::result::Result<T, E>;
 
 pub(crate) fn serialize_proto_message<T>(m: T) -> Vec<u8>
 where

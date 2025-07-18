@@ -1,8 +1,7 @@
 use twirp::async_trait::async_trait;
 use twirp::client::{Client, ClientBuilder, Middleware, Next};
-use twirp::reqwest::{Request, Response};
 use twirp::url::Url;
-use twirp::GenericError;
+use twirp::{GenericError, Request};
 
 pub mod service {
     pub mod haberdash {
@@ -13,15 +12,27 @@ pub mod service {
 }
 
 use service::haberdash::v1::{
-    GetStatusRequest, GetStatusResponse, HaberdasherApiClient, MakeHatRequest, MakeHatResponse,
+    GetStatusRequest, GetStatusResponse, HaberdasherApi, MakeHatRequest, MakeHatResponse,
 };
 
+/// You can run this end-to-end example by running both a server and a client and observing the requests/responses.
+///
+/// 1. Run the server:
+/// ```sh
+/// cargo run --bin advanced-server # OR cargo run --bin simple-server
+/// ```
+///
+/// 2. In another shell, run the client:
+/// ```sh
+/// cargo run --bin client
+/// ```
 #[tokio::main]
 pub async fn main() -> Result<(), GenericError> {
     // basic client
-    use service::haberdash::v1::HaberdasherApiClient;
-    let client = Client::from_base_url(Url::parse("http://localhost:3000/twirp/")?)?;
-    let resp = client.make_hat(MakeHatRequest { inches: 1 }).await;
+    let client = Client::from_base_url(Url::parse("http://localhost:3000/twirp/")?);
+    let resp = client
+        .make_hat(Request::new(MakeHatRequest { inches: 1 }))
+        .await;
     eprintln!("{:?}", resp);
 
     // customize the client with middleware
@@ -31,10 +42,10 @@ pub async fn main() -> Result<(), GenericError> {
     )
     .with(RequestHeaders { hmac_key: None })
     .with(PrintResponseHeaders {})
-    .build()?;
+    .build();
     let resp = client
         .with_host("localhost")
-        .make_hat(MakeHatRequest { inches: 1 })
+        .make_hat(Request::new(MakeHatRequest { inches: 1 }))
         .await;
     eprintln!("{:?}", resp);
 
@@ -47,7 +58,11 @@ struct RequestHeaders {
 
 #[async_trait]
 impl Middleware for RequestHeaders {
-    async fn handle(&self, mut req: Request, next: Next<'_>) -> twirp::client::Result<Response> {
+    async fn handle(
+        &self,
+        mut req: twirp::reqwest::Request,
+        next: Next<'_>,
+    ) -> twirp::Result<twirp::reqwest::Response> {
         req.headers_mut().append("x-request-id", "XYZ".try_into()?);
         if let Some(_hmac_key) = &self.hmac_key {
             req.headers_mut()
@@ -62,7 +77,11 @@ struct PrintResponseHeaders;
 
 #[async_trait]
 impl Middleware for PrintResponseHeaders {
-    async fn handle(&self, req: Request, next: Next<'_>) -> twirp::client::Result<Response> {
+    async fn handle(
+        &self,
+        req: twirp::reqwest::Request,
+        next: Next<'_>,
+    ) -> twirp::Result<twirp::reqwest::Response> {
         let res = next.run(req).await?;
         eprintln!("Response headers: {res:?}");
         Ok(res)
@@ -74,18 +93,18 @@ impl Middleware for PrintResponseHeaders {
 struct MockHaberdasherApiClient;
 
 #[async_trait]
-impl HaberdasherApiClient for MockHaberdasherApiClient {
+impl HaberdasherApi for MockHaberdasherApiClient {
     async fn make_hat(
         &self,
-        _req: MakeHatRequest,
-    ) -> Result<MakeHatResponse, twirp::client::ClientError> {
+        _req: Request<MakeHatRequest>,
+    ) -> twirp::Result<twirp::Response<MakeHatResponse>> {
         todo!()
     }
 
     async fn get_status(
         &self,
-        _req: GetStatusRequest,
-    ) -> Result<GetStatusResponse, twirp::client::ClientError> {
+        _req: Request<GetStatusRequest>,
+    ) -> twirp::Result<twirp::Response<GetStatusResponse>> {
         todo!()
     }
 }
