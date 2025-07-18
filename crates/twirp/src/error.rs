@@ -221,6 +221,10 @@ impl TwirpErrorResponse {
         self
     }
 
+    pub fn rust_error(&self) -> Option<&String> {
+        self.rust_error.as_ref()
+    }
+
     pub fn with_retry_after(mut self, duration: impl Into<Option<Duration>>) -> Self {
         let duration = duration.into();
         self.retry_after = duration.map(|d| {
