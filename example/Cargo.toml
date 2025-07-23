@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 twirp = { path = "../crates/twirp" }
 
-prost = "0.13"
+prost = "0.14"
 prost-wkt = "0.6"
 prost-wkt-types = "0.6"
 serde = { version = "1.0", features = ["derive"] }
