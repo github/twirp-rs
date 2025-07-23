@@ -199,13 +199,13 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             #[twirp::async_trait::async_trait]
             impl twirp::client::MockHandler for #client_mock_name {
                 async fn handle(&self, req: twirp::reqwest::Request) -> twirp::Result<twirp::reqwest::Response> {
-                    let Some(segments) = req.url().path_segments() else {
+                    let Some(mut segments) = req.url().path_segments() else {
                         return Err(twirp::bad_route(format!(
                             "invalid request to {}: no path segments",
                             req.url()
                         )));
                     };
-                    let Some(path) = segments.last() else {
+                    let Some(path) = segments.next_back() else {
                         return Err(twirp::bad_route(format!(
                             "invalid request to {}: no path",
                             req.url()
