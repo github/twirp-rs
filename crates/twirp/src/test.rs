@@ -25,15 +25,20 @@ pub async fn decode_request<I>(mut req: reqwest::Request) -> Result<Request<I>>
 where
     I: prost::Message + Default,
 {
+    let url = req.url().clone();
+    let headers = req.headers().clone();
     let body = std::mem::take(req.body_mut())
         .ok_or_else(|| malformed("failed to read the request body"))?
         .collect()
         .await?
         .to_bytes();
-    let req = I::decode(body).map_err(|e| malformed(format!("failed to decode request: {e}")))?;
-    let req = Request::builder()
-        .method("POST")
-        .body(req)
+    let data = I::decode(body).map_err(|e| malformed(format!("failed to decode request: {e}")))?;
+    let mut req = Request::builder().method("POST").uri(url.to_string());
+    req.headers_mut()
+        .expect("failed to get headers")
+        .extend(headers);
+    let req = req
+        .body(data)
         .map_err(|e| malformed(format!("failed to build the request: {e}")))?;
     Ok(req)
 }
