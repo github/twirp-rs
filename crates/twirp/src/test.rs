@@ -13,7 +13,11 @@ use tokio::time::Instant;
 
 use crate::details::TwirpRouterBuilder;
 use crate::server::Timings;
-use crate::{error, serialize_proto_message, Client, Response, Result, TwirpErrorResponse};
+use crate::{
+    error, malformed, serialize_proto_message, Client, Response, Result, TwirpErrorResponse,
+};
+
+// TODO: Figure out `test-support` feature.
 
 // TODO: Mock out other headers and extensions in the request and response?
 
@@ -22,12 +26,15 @@ where
     I: prost::Message + Default,
 {
     let body = std::mem::take(req.body_mut())
-        .unwrap()
+        .ok_or_else(|| malformed("failed to read the request body"))?
         .collect()
         .await?
         .to_bytes();
-    let req = I::decode(body).unwrap();
-    let req = Request::builder().method("POST").body(req).unwrap();
+    let req = I::decode(body).map_err(|e| malformed(format!("failed to decode request: {e}")))?;
+    let req = Request::builder()
+        .method("POST")
+        .body(req)
+        .map_err(|e| malformed(format!("failed to build the request: {e}")))?;
     Ok(req)
 }
 

@@ -11,9 +11,7 @@ pub mod service {
     }
 }
 
-use service::haberdash::v1::{
-    GetStatusRequest, GetStatusResponse, HaberdasherApi, MakeHatRequest, MakeHatResponse,
-};
+use service::haberdash::v1::{HaberdasherApi, MakeHatRequest};
 
 /// You can run this end-to-end example by running both a server and a client and observing the requests/responses.
 ///
@@ -92,9 +90,8 @@ impl Middleware for PrintResponseHeaders {
 mod tests {
     use std::sync::Arc;
 
-    use twirp::client::MockHandler;
-    use twirp::reqwest;
-    use twirp::test::{decode_request, encode_response};
+    use crate::service::haberdash::v1::test::MockHaberdasherApiClient;
+    use crate::service::haberdash::v1::{GetStatusRequest, GetStatusResponse, MakeHatResponse};
 
     use super::*;
 
@@ -133,35 +130,45 @@ mod tests {
         }
     }
 
-    struct MockHaberdasherApiClient {
-        inner: Arc<dyn HaberdasherApi>,
-    }
+    // use twirp::client::MockHandler;
+    // use twirp::reqwest;
+    // use twirp::test::{decode_request, encode_response};
 
-    impl MockHaberdasherApiClient {
-        pub fn new(inner: Arc<dyn HaberdasherApi>) -> Arc<Self> {
-            Arc::new(Self { inner })
-        }
-    }
+    // struct MockHaberdasherApiClient {
+    //     inner: Arc<dyn HaberdasherApi>,
+    // }
 
-    #[async_trait]
-    impl MockHandler for MockHaberdasherApiClient {
-        async fn handle(&self, req: reqwest::Request) -> twirp::Result<reqwest::Response> {
-            let Some(path) = req.url().path_segments().unwrap().last() else {
-                return Err(twirp::not_found(format!(
-                    "invalid request to {}: no path",
-                    req.url()
-                )));
-            };
+    // impl MockHaberdasherApiClient {
+    //     pub fn new(inner: Arc<dyn HaberdasherApi>) -> Arc<Self> {
+    //         Arc::new(Self { inner })
+    //     }
+    // }
 
-            match path {
-                "MakeHat" => {
-                    encode_response(self.inner.make_hat(decode_request(req).await?).await?)
-                }
-                "GetStatus" => {
-                    encode_response(self.inner.get_status(decode_request(req).await?).await?)
-                }
-                _ => Err(twirp::not_found(format!("path '{path:?}' not found"))),
-            }
-        }
-    }
+    // #[async_trait]
+    // impl MockHandler for MockHaberdasherApiClient {
+    //     async fn handle(&self, req: reqwest::Request) -> twirp::Result<reqwest::Response> {
+    //         let Some(segments) = req.url().path_segments() else {
+    //             return Err(twirp::bad_route(format!(
+    //                 "invalid request to {}: no path segments",
+    //                 req.url()
+    //             )));
+    //         };
+    //         let Some(path) = segments.last() else {
+    //             return Err(twirp::bad_route(format!(
+    //                 "invalid request to {}: no path",
+    //                 req.url()
+    //             )));
+    //         };
+
+    //         match path {
+    //             "MakeHat" => {
+    //                 encode_response(self.inner.make_hat(decode_request(req).await?).await?)
+    //             }
+    //             "GetStatus" => {
+    //                 encode_response(self.inner.get_status(decode_request(req).await?).await?)
+    //             }
+    //             _ => Err(twirp::bad_route(format!("path '{path:?}' not found"))),
+    //         }
+    //     }
+    // }
 }
