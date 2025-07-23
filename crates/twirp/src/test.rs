@@ -13,7 +13,33 @@ use tokio::time::Instant;
 
 use crate::details::TwirpRouterBuilder;
 use crate::server::Timings;
-use crate::{error, Client, Result, TwirpErrorResponse};
+use crate::{error, serialize_proto_message, Client, Response, Result, TwirpErrorResponse};
+
+// TODO: Mock out other headers and extensions in the request and response?
+
+pub async fn decode_request<I>(mut req: reqwest::Request) -> Result<Request<I>>
+where
+    I: prost::Message + Default,
+{
+    let body = std::mem::take(req.body_mut())
+        .unwrap()
+        .collect()
+        .await?
+        .to_bytes();
+    let req = I::decode(body).unwrap();
+    let req = Request::builder().method("POST").body(req).unwrap();
+    Ok(req)
+}
+
+pub fn encode_response<O>(resp: Response<O>) -> Result<reqwest::Response>
+where
+    O: prost::Message + Default,
+{
+    let mut resp = resp.map(serialize_proto_message);
+    resp.headers_mut()
+        .insert("Content-Type", "application/protobuf".try_into()?);
+    Ok(reqwest::Response::from(resp))
+}
 
 pub async fn run_test_server(port: u16) -> JoinHandle<Result<(), std::io::Error>> {
     let router = test_api_router();

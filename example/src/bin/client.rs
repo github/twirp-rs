@@ -88,23 +88,80 @@ impl Middleware for PrintResponseHeaders {
     }
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
-struct MockHaberdasherApiClient;
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
 
-#[async_trait]
-impl HaberdasherApi for MockHaberdasherApiClient {
-    async fn make_hat(
-        &self,
-        _req: Request<MakeHatRequest>,
-    ) -> twirp::Result<twirp::Response<MakeHatResponse>> {
-        todo!()
+    use twirp::client::MockHandler;
+    use twirp::reqwest;
+    use twirp::test::{decode_request, encode_response};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_client_with_mock() {
+        let mock = Mock;
+        let client = Client::for_test(MockHaberdasherApiClient::new(Arc::new(mock)));
+        let resp = client
+            .make_hat(Request::new(MakeHatRequest { inches: 1 }))
+            .await;
+        eprintln!("{:?}", resp);
+        assert!(resp.is_ok());
+        assert_eq!(42, resp.unwrap().into_body().size);
     }
 
-    async fn get_status(
-        &self,
-        _req: Request<GetStatusRequest>,
-    ) -> twirp::Result<twirp::Response<GetStatusResponse>> {
-        todo!()
+    struct Mock;
+
+    #[async_trait]
+    impl HaberdasherApi for Mock {
+        async fn make_hat(
+            &self,
+            req: Request<MakeHatRequest>,
+        ) -> twirp::Result<twirp::Response<MakeHatResponse>> {
+            eprintln!("Mock make_hat called with: {:?}", req);
+            Ok(twirp::Response::new(MakeHatResponse {
+                size: 42,
+                ..Default::default()
+            }))
+        }
+
+        async fn get_status(
+            &self,
+            _req: Request<GetStatusRequest>,
+        ) -> twirp::Result<twirp::Response<GetStatusResponse>> {
+            todo!()
+        }
+    }
+
+    struct MockHaberdasherApiClient {
+        inner: Arc<dyn HaberdasherApi>,
+    }
+
+    impl MockHaberdasherApiClient {
+        pub fn new(inner: Arc<dyn HaberdasherApi>) -> Arc<Self> {
+            Arc::new(Self { inner })
+        }
+    }
+
+    #[async_trait]
+    impl MockHandler for MockHaberdasherApiClient {
+        async fn handle(&self, req: reqwest::Request) -> twirp::Result<reqwest::Response> {
+            let Some(path) = req.url().path_segments().unwrap().last() else {
+                return Err(twirp::not_found(format!(
+                    "invalid request to {}: no path",
+                    req.url()
+                )));
+            };
+
+            match path {
+                "MakeHat" => {
+                    encode_response(self.inner.make_hat(decode_request(req).await?).await?)
+                }
+                "GetStatus" => {
+                    encode_response(self.inner.get_status(decode_request(req).await?).await?)
+                }
+                _ => Err(twirp::not_found(format!("path '{path:?}' not found"))),
+            }
+        }
     }
 }

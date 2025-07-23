@@ -207,6 +207,8 @@ version = "0.1.0"
 dependencies = [
  "fs-err",
  "glob",
+ "http",
+ "http-body-util",
  "prost",
  "prost-build",
  "prost-wkt",
