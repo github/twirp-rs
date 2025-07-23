@@ -18,9 +18,9 @@ use crate::{
 };
 
 // TODO: Figure out `test-support` feature.
-
 // TODO: Mock out other headers and extensions in the request and response?
 
+// NOTE: For testing and mocking only.
 pub async fn decode_request<I>(mut req: reqwest::Request) -> Result<Request<I>>
 where
     I: prost::Message + Default,
@@ -38,6 +38,7 @@ where
     Ok(req)
 }
 
+// NOTE: For testing and mocking only.
 pub fn encode_response<O>(resp: Response<O>) -> Result<reqwest::Response>
 where
     O: prost::Message + Default,
