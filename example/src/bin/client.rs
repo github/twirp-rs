@@ -129,46 +129,4 @@ mod tests {
             todo!()
         }
     }
-
-    // use twirp::client::MockHandler;
-    // use twirp::reqwest;
-    // use twirp::test::{decode_request, encode_response};
-
-    // struct MockHaberdasherApiClient {
-    //     inner: Arc<dyn HaberdasherApi>,
-    // }
-
-    // impl MockHaberdasherApiClient {
-    //     pub fn new(inner: Arc<dyn HaberdasherApi>) -> Arc<Self> {
-    //         Arc::new(Self { inner })
-    //     }
-    // }
-
-    // #[async_trait]
-    // impl MockHandler for MockHaberdasherApiClient {
-    //     async fn handle(&self, req: reqwest::Request) -> twirp::Result<reqwest::Response> {
-    //         let Some(segments) = req.url().path_segments() else {
-    //             return Err(twirp::bad_route(format!(
-    //                 "invalid request to {}: no path segments",
-    //                 req.url()
-    //             )));
-    //         };
-    //         let Some(path) = segments.last() else {
-    //             return Err(twirp::bad_route(format!(
-    //                 "invalid request to {}: no path",
-    //                 req.url()
-    //             )));
-    //         };
-
-    //         match path {
-    //             "MakeHat" => {
-    //                 encode_response(self.inner.make_hat(decode_request(req).await?).await?)
-    //             }
-    //             "GetStatus" => {
-    //                 encode_response(self.inner.get_status(decode_request(req).await?).await?)
-    //             }
-    //             _ => Err(twirp::bad_route(format!("path '{path:?}' not found"))),
-    //         }
-    //     }
-    // }
 }
