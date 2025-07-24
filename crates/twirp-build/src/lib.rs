@@ -182,7 +182,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let mut path_matches = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
             let name = &m.name;
-            let path = &m.proto_name;
+            let path = format!("{}/{}", service.fqn, &m.proto_name);
             path_matches.push(quote! {
                 #path => {
                     twirp::test::encode_response(self.inner.#name(twirp::test::decode_request(req).await?).await?).map(Some)

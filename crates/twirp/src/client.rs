@@ -262,15 +262,19 @@ impl<'a> Next<'a> {
                         url
                     )));
                 };
-                let Some(path) = segments.next_back() else {
+                let (Some(path), Some(service)) = (segments.next_back(), segments.next_back())
+                else {
                     return Err(crate::bad_route(format!(
-                        "invalid request to {}: no path",
+                        "invalid request to {}: path and service required",
                         url
                     )));
                 };
                 for mock in mocks {
                     match mock
-                        .handle(path, req.try_clone().expect("failed to clone request"))
+                        .handle(
+                            &format!("{service}/{path}"),
+                            req.try_clone().expect("failed to clone request"),
+                        )
                         .await
                     {
                         Ok(Some(res)) => return Ok(res),
