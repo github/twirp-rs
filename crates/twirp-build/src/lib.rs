@@ -192,8 +192,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let client_mock_impl = quote! {
             impl #client_mock_name {
                 #[allow(clippy::new_ret_no_self)]
-                pub fn new(inner: std::sync::Arc<dyn #rpc_trait_name>) -> std::sync::Arc<dyn twirp::client::MockHandler> {
-                    std::sync::Arc::new(Self { inner })
+                pub fn new<M: #rpc_trait_name + 'static>(inner: M) -> Self {
+                    Self { inner: std::sync::Arc::new(inner) }
                 }
             }
 

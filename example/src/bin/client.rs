@@ -93,7 +93,7 @@ impl Middleware for PrintResponseHeaders {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use twirp::client::MockClientBuilder;
 
     use crate::service::haberdash::v1::test::MockHaberdasherApiClient;
     use crate::service::haberdash::v1::{GetStatusRequest, GetStatusResponse, MakeHatResponse};
@@ -104,10 +104,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_with_mock() {
-        // let mock: Arc<dyn MockHandler> = MockHaberdasherApiClient::new(Arc::new(Mock));
-        let haberdash_mock = MockHaberdasherApiClient::new(Arc::new(Mock));
-        let status_mock = MockStatusApiClient::new(Arc::new(Mock));
-        let client = Client::for_test(vec![haberdash_mock, status_mock]);
+        let client = MockClientBuilder::new()
+            .with_mock(MockHaberdasherApiClient::new(Mock))
+            .with_mock(MockStatusApiClient::new(Mock))
+            .build();
         let resp = client
             .make_hat(Request::new(MakeHatRequest { inches: 1 }))
             .await;

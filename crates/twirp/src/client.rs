@@ -105,7 +105,7 @@ impl Client {
 
     /// Creates a `twirp::Client` with a mock handler for testing purposes.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn for_test(mocks: Vec<Arc<dyn MockHandler>>) -> Self {
+    fn for_test(mocks: Vec<Arc<dyn MockHandler>>) -> Self {
         Client {
             http_client: reqwest::Client::new(),
             inner: Arc::new(ClientRef {
@@ -298,6 +298,27 @@ pub trait MockHandler: 'static + Send + Sync {
         path: &str,
         mut req: reqwest::Request,
     ) -> Result<Option<reqwest::Response>>;
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub struct MockClientBuilder {
+    mocks: Vec<Arc<dyn MockHandler>>,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl MockClientBuilder {
+    pub fn new() -> Self {
+        Self { mocks: Vec::new() }
+    }
+
+    pub fn with_mock<M: MockHandler + 'static>(mut self, mock: M) -> Self {
+        self.mocks.push(Arc::new(mock));
+        self
+    }
+
+    pub fn build(self) -> Client {
+        Client::for_test(self.mocks)
+    }
 }
 
 #[cfg(test)]
