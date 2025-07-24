@@ -4,9 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# TODO: It shouldn't be necessary to have the test-support feature in there.
-# twirp = { path = "../crates/twirp" }
-twirp = { path = "../crates/twirp", features = ["test-support"] }
+twirp = { path = "../crates/twirp" }
 
 prost = "0.13"
 prost-wkt = "0.6"

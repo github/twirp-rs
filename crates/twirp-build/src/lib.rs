@@ -173,19 +173,20 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         //
         // generate the client mock helper
         //
+        let service_fqn = &service.fqn;
         let client_mock_name = format_ident!("Mock{rpc_trait_name}Client");
         let client_mock_struct = quote! {
             pub struct #client_mock_name {
                 inner: std::sync::Arc<dyn #rpc_trait_name>,
             }
         };
-        let mut path_matches = Vec::with_capacity(service.methods.len());
+        let mut method_matches = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
             let name = &m.name;
-            let path = format!("{}/{}", service.fqn, &m.proto_name);
-            path_matches.push(quote! {
-                #path => {
-                    twirp::test::encode_response(self.inner.#name(twirp::test::decode_request(req).await?).await?).map(Some)
+            let method = &m.proto_name;
+            method_matches.push(quote! {
+                #method => {
+                    twirp::test::encode_response(self.inner.#name(twirp::test::decode_request(req).await?).await?)
                 }
             });
         }
@@ -199,18 +200,29 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 
             #[twirp::async_trait::async_trait]
             impl twirp::client::MockHandler for #client_mock_name {
-                async fn handle(&self, path: &str, req: twirp::reqwest::Request) -> twirp::Result<Option<twirp::reqwest::Response>> {
-                    match path {
-                        #(#path_matches)*
-                        _ => Ok(None)
+                fn service(&self) -> &str {
+                    #service_fqn
+                }
+                async fn handle(&self, method: &str, req: twirp::reqwest::Request) -> twirp::Result<twirp::reqwest::Response> {
+                    match method {
+                        #(#method_matches)*
+                        _ => Err(twirp::bad_route(format!("unknown rpc `{method}` for service `{}`", super::SERVICE_FQN))),
                     }
                 }
             }
         };
-
         // TODO: Gate the mocks on a feature flag
         // let test_support = std::env::var("CARGO_CFG_FEATURE_TEST_SUPPORT").is_ok();
         // panic!("test-support: {test_support}");
+        let test_mod = quote! {
+            #[allow(dead_code)]
+            pub mod test {
+                use super::*;
+
+                #client_mock_struct
+                #client_mock_impl
+            }
+        };
 
         // generate the service and client as a single file. run it through
         // prettyplease before outputting it.
@@ -226,13 +238,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 
             #client_trait
 
-            #[allow(dead_code)]
-            pub mod test {
-                use super::*;
-
-                #client_mock_struct
-                #client_mock_impl
-            }
+            #test_mod
         };
 
         let ast: syn::File = syn::parse2(generated)
