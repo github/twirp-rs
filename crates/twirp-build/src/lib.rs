@@ -185,35 +185,24 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let path = &m.proto_name;
             path_matches.push(quote! {
                 #path => {
-                    twirp::test::encode_response(self.inner.#name(twirp::test::decode_request(req).await?).await?)
+                    twirp::test::encode_response(self.inner.#name(twirp::test::decode_request(req).await?).await?).map(Some)
                 }
             });
         }
         let client_mock_impl = quote! {
             impl #client_mock_name {
-                pub fn new(inner: std::sync::Arc<dyn #rpc_trait_name>) -> std::sync::Arc<Self> {
+                #[allow(clippy::new_ret_no_self)]
+                pub fn new(inner: std::sync::Arc<dyn #rpc_trait_name>) -> std::sync::Arc<dyn twirp::client::MockHandler> {
                     std::sync::Arc::new(Self { inner })
                 }
             }
 
             #[twirp::async_trait::async_trait]
             impl twirp::client::MockHandler for #client_mock_name {
-                async fn handle(&self, req: twirp::reqwest::Request) -> twirp::Result<twirp::reqwest::Response> {
-                    let Some(mut segments) = req.url().path_segments() else {
-                        return Err(twirp::bad_route(format!(
-                            "invalid request to {}: no path segments",
-                            req.url()
-                        )));
-                    };
-                    let Some(path) = segments.next_back() else {
-                        return Err(twirp::bad_route(format!(
-                            "invalid request to {}: no path",
-                            req.url()
-                        )));
-                    };
+                async fn handle(&self, path: &str, req: twirp::reqwest::Request) -> twirp::Result<Option<twirp::reqwest::Response>> {
                     match path {
                         #(#path_matches)*
-                        _ => Err(twirp::bad_route(format!("path '{path:?}' not found"))),
+                        _ => Ok(None)
                     }
                 }
             }

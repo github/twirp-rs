@@ -55,7 +55,7 @@ pub struct Client {
     inner: Arc<ClientRef>,
     host: Option<String>,
 
-    mock: Option<Arc<dyn MockHandler>>,
+    mocks: Option<Vec<Arc<dyn MockHandler>>>,
 }
 
 struct ClientRef {
@@ -99,13 +99,13 @@ impl Client {
                 middlewares,
             }),
             host: None,
-            mock: None,
+            mocks: None,
         }
     }
 
     /// Creates a `twirp::Client` with a mock handler for testing purposes.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn for_test(mock: Arc<dyn MockHandler>) -> Self {
+    pub fn for_test(mocks: Vec<Arc<dyn MockHandler>>) -> Self {
         Client {
             http_client: reqwest::Client::new(),
             inner: Arc::new(ClientRef {
@@ -113,7 +113,7 @@ impl Client {
                 middlewares: vec![],
             }),
             host: None,
-            mock: Some(mock),
+            mocks: Some(mocks),
         }
     }
 
@@ -136,7 +136,7 @@ impl Client {
             http_client: self.http_client.clone(),
             inner: self.inner.clone(),
             host: Some(host.to_string()),
-            mock: self.mock.clone(),
+            mocks: self.mocks.clone(),
         }
     }
 
@@ -164,7 +164,11 @@ impl Client {
             .build()?;
 
         // Create and execute the middleware handlers
-        let next = Next::new(&self.http_client, &self.mock, &self.inner.middlewares);
+        let next = Next::new(
+            &self.http_client,
+            self.mocks.as_deref(),
+            &self.inner.middlewares,
+        );
         let response = next.run(request).await?;
 
         // These have to be extracted because reading the body consumes `Response`.
@@ -224,7 +228,7 @@ where
 #[derive(Clone)]
 pub struct Next<'a> {
     client: &'a reqwest::Client,
-    mock: &'a Option<Arc<dyn MockHandler>>,
+    mocks: Option<&'a [Arc<dyn MockHandler>]>,
     middlewares: &'a [Box<dyn Middleware>],
 }
 
@@ -233,12 +237,12 @@ pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T
 impl<'a> Next<'a> {
     pub(crate) fn new(
         client: &'a reqwest::Client,
-        mock: &'a Option<Arc<dyn MockHandler>>,
+        mocks: Option<&'a [Arc<dyn MockHandler>]>,
         middlewares: &'a [Box<dyn Middleware>],
     ) -> Self {
         Next {
             client,
-            mock,
+            mocks,
             middlewares,
         }
     }
@@ -247,9 +251,35 @@ impl<'a> Next<'a> {
         if let Some((current, rest)) = self.middlewares.split_first() {
             self.middlewares = rest;
             Box::pin(current.handle(req, self))
-        } else if let Some(mock) = self.mock {
+        } else if let Some(mocks) = self.mocks {
             // Execute the mock handler (if it exists)
-            Box::pin(async move { mock.handle(req).await })
+            Box::pin(async move {
+                // TODO: Need to match on entire path (not just final segment)
+                let url = req.url().clone();
+                let Some(mut segments) = url.path_segments() else {
+                    return Err(crate::bad_route(format!(
+                        "invalid request to {}: no path segments",
+                        url
+                    )));
+                };
+                let Some(path) = segments.next_back() else {
+                    return Err(crate::bad_route(format!(
+                        "invalid request to {}: no path",
+                        url
+                    )));
+                };
+                for mock in mocks {
+                    match mock
+                        .handle(path, req.try_clone().expect("failed to clone request"))
+                        .await
+                    {
+                        Ok(Some(res)) => return Ok(res),
+                        Ok(None) => {} // try the next mock
+                        Err(e) => return Err(e),
+                    }
+                }
+                Err(crate::bad_route(format!("path '{path:?}' not found")))
+            })
         } else {
             // Execute the actual http request here
             Box::pin(async move { Ok(self.client.execute(req).await?) })
@@ -259,7 +289,11 @@ impl<'a> Next<'a> {
 
 #[async_trait]
 pub trait MockHandler: 'static + Send + Sync {
-    async fn handle(&self, mut req: reqwest::Request) -> Result<reqwest::Response>;
+    async fn handle(
+        &self,
+        path: &str,
+        mut req: reqwest::Request,
+    ) -> Result<Option<reqwest::Response>>;
 }
 
 #[cfg(test)]

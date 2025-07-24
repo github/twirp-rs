@@ -9,6 +9,11 @@ pub mod service {
             include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
         }
     }
+    pub mod status {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/service.status.v1.rs"));
+        }
+    }
 }
 
 use service::haberdash::v1::{HaberdasherApi, MakeHatRequest};
@@ -92,19 +97,30 @@ mod tests {
 
     use crate::service::haberdash::v1::test::MockHaberdasherApiClient;
     use crate::service::haberdash::v1::{GetStatusRequest, GetStatusResponse, MakeHatResponse};
+    use crate::service::status::v1::test::MockStatusApiClient;
+    use crate::service::status::v1::{GetSystemStatusRequest, GetSystemStatusResponse, StatusApi};
 
     use super::*;
 
     #[tokio::test]
     async fn test_client_with_mock() {
-        let mock = Mock;
-        let client = Client::for_test(MockHaberdasherApiClient::new(Arc::new(mock)));
+        // let mock: Arc<dyn MockHandler> = MockHaberdasherApiClient::new(Arc::new(Mock));
+        let haberdash_mock = MockHaberdasherApiClient::new(Arc::new(Mock));
+        let status_mock = MockStatusApiClient::new(Arc::new(Mock));
+        let client = Client::for_test(vec![haberdash_mock, status_mock]);
         let resp = client
             .make_hat(Request::new(MakeHatRequest { inches: 1 }))
             .await;
         eprintln!("{:?}", resp);
         assert!(resp.is_ok());
         assert_eq!(42, resp.unwrap().into_body().size);
+
+        let resp = client
+            .get_system_status(Request::new(GetSystemStatusRequest {}))
+            .await;
+        eprintln!("{:?}", resp);
+        assert!(resp.is_ok());
+        assert_eq!("ok", resp.unwrap().into_body().status);
     }
 
     struct Mock;
@@ -127,6 +143,19 @@ mod tests {
             _req: Request<GetStatusRequest>,
         ) -> twirp::Result<twirp::Response<GetStatusResponse>> {
             todo!()
+        }
+    }
+
+    #[async_trait]
+    impl StatusApi for Mock {
+        async fn get_system_status(
+            &self,
+            req: Request<GetSystemStatusRequest>,
+        ) -> twirp::Result<twirp::Response<GetSystemStatusResponse>> {
+            eprintln!("Mock get_system_status called with: {:?}", req);
+            Ok(twirp::Response::new(GetSystemStatusResponse {
+                status: "ok".into(),
+            }))
         }
     }
 }
