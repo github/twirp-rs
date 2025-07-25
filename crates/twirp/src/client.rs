@@ -1,13 +1,18 @@
+#[cfg(any(test, feature = "test-support"))]
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec;
 
 use async_trait::async_trait;
 use reqwest::header::CONTENT_TYPE;
+#[cfg(any(test, feature = "test-support"))]
+use url::Host;
 use url::Url;
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
 use crate::{serialize_proto_message, Result, TwirpErrorResponse};
 
+/// Builder to easily create twirp clients with middleware.
 pub struct ClientBuilder {
     base_url: Url,
     http_client: reqwest::Client,
@@ -39,6 +44,10 @@ impl ClientBuilder {
         }
     }
 
+    /// Creates a `twirp::Client`.
+    ///
+    /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
+    /// you create one and **reuse** it.
     pub fn build(self) -> Client {
         Client::new(self.base_url, self.http_client, self.middleware)
     }
@@ -54,6 +63,8 @@ pub struct Client {
     http_client: reqwest::Client,
     inner: Arc<ClientRef>,
     host: Option<String>,
+    #[cfg(any(test, feature = "test-support"))]
+    mock_handlers: Option<MockHandlers>,
 }
 
 struct ClientRef {
@@ -97,6 +108,8 @@ impl Client {
                 middlewares,
             }),
             host: None,
+            #[cfg(any(test, feature = "test-support"))]
+            mock_handlers: None,
         }
     }
 
@@ -108,6 +121,7 @@ impl Client {
         Self::new(base_url, reqwest::Client::new(), vec![])
     }
 
+    /// The base URL of the service the client will call.
     pub fn base_url(&self) -> &Url {
         &self.inner.base_url
     }
@@ -119,6 +133,8 @@ impl Client {
             http_client: self.http_client.clone(),
             inner: self.inner.clone(),
             host: Some(host.to_string()),
+            #[cfg(any(test, feature = "test-support"))]
+            mock_handlers: self.mock_handlers.clone(),
         }
     }
 
@@ -146,7 +162,12 @@ impl Client {
             .build()?;
 
         // Create and execute the middleware handlers
-        let next = Next::new(&self.http_client, &self.inner.middlewares);
+        let next = Next::new(
+            &self.http_client,
+            &self.inner.middlewares,
+            #[cfg(any(test, feature = "test-support"))]
+            self.mock_handlers.as_ref(),
+        );
         let response = next.run(request).await?;
 
         // These have to be extracted because reading the body consumes `Response`.
@@ -207,24 +228,160 @@ where
 pub struct Next<'a> {
     client: &'a reqwest::Client,
     middlewares: &'a [Box<dyn Middleware>],
+    #[cfg(any(test, feature = "test-support"))]
+    mock_handlers: Option<&'a MockHandlers>,
 }
 
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
 
 impl<'a> Next<'a> {
-    pub(crate) fn new(client: &'a reqwest::Client, middlewares: &'a [Box<dyn Middleware>]) -> Self {
+    pub(crate) fn new(
+        client: &'a reqwest::Client,
+        middlewares: &'a [Box<dyn Middleware>],
+        #[cfg(any(test, feature = "test-support"))] mock_handlers: Option<&'a MockHandlers>,
+    ) -> Self {
         Next {
             client,
             middlewares,
+            #[cfg(any(test, feature = "test-support"))]
+            mock_handlers,
         }
     }
 
     pub fn run(mut self, req: reqwest::Request) -> BoxFuture<'a, Result<reqwest::Response>> {
         if let Some((current, rest)) = self.middlewares.split_first() {
+            // Run any middleware
             self.middlewares = rest;
             Box::pin(current.handle(req, self))
         } else {
+            #[cfg(any(test, feature = "test-support"))]
+            if let Some(mock_handlers) = self.mock_handlers {
+                // If we've got a test client with mock handlers: use those
+                return Box::pin(async move { execute_mocks(req, mock_handlers).await });
+            }
+
+            // Otherwise: execute the actual http request here
             Box::pin(async move { Ok(self.client.execute(req).await?) })
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+async fn execute_mocks(
+    req: reqwest::Request,
+    mock_handlers: &MockHandlers,
+) -> Result<reqwest::Response> {
+    let url = req.url().clone();
+    let Some(mut segments) = url.path_segments() else {
+        return Err(crate::bad_route(format!(
+            "invalid request to {}: no path segments",
+            url
+        )));
+    };
+    let (Some(method), Some(service)) = (segments.next_back(), segments.next_back()) else {
+        return Err(crate::bad_route(format!(
+            "invalid request to {}: method and service required",
+            url
+        )));
+    };
+    let host = url.host().expect("no host in url");
+
+    if let Some(handler) = mock_handlers.get(&host, service) {
+        handler.handle(method, req).await
+    } else {
+        Err(crate::bad_route(format!(
+            "no mock handler found for host: '{host}', service: '{service}'"
+        )))
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Clone, Default)]
+pub(crate) struct MockHandlers {
+    /// A map of host/service names to mock handlers.
+    handlers: HashMap<String, Arc<dyn MockHandler>>,
+}
+#[cfg(any(test, feature = "test-support"))]
+impl MockHandlers {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self {
+            handlers: HashMap::new(),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn add<M: MockHandler + 'static>(&mut self, host: &str, handler: M) {
+        let key = format!("{}/{}", host, handler.service());
+        self.handlers.insert(key, Arc::new(handler));
+    }
+
+    pub fn get(&self, host: &Host<&str>, service: &str) -> Option<Arc<dyn MockHandler>> {
+        self.handlers.get(&format!("{}/{}", host, service)).cloned()
+    }
+}
+
+// TODO: MockHandler could be behind the `test-support` feature flag, but the twirp-build generated
+// code depends on `MockHandler` and would also need to appropriately configure flags.
+
+#[async_trait]
+pub trait MockHandler: 'static + Send + Sync {
+    fn service(&self) -> &str;
+    async fn handle(&self, path: &str, mut req: reqwest::Request) -> Result<reqwest::Response>;
+}
+
+/// A twirp Client builder for create clients with mock service handlers.
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Default)]
+pub struct MockClientBuilder {
+    mocks: MockHandlers,
+    middleware: Vec<Box<dyn Middleware>>,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl MockClientBuilder {
+    pub fn new() -> Self {
+        Self {
+            mocks: MockHandlers::new(),
+            middleware: vec![],
+        }
+    }
+
+    /// Add middleware to the client that will be called on each request.
+    /// Middlewares are invoked in the order they are added as part of the
+    /// request cycle.
+    pub fn with<M>(mut self, middleware: M) -> Self
+    where
+        M: Middleware,
+    {
+        self.middleware.push(Box::new(middleware));
+        self
+    }
+
+    /// Add a mock handler for a service using the default host.
+    pub fn with_mock<M: MockHandler + 'static>(self, mock: M) -> Self {
+        self.with_mock_for_host(Self::DEFAULT_HOST, mock)
+    }
+
+    /// Add a mock handler for a service for a specific host.
+    pub fn with_mock_for_host<M: MockHandler + 'static>(mut self, host: &str, mock: M) -> Self {
+        self.mocks.add(host, mock);
+        self
+    }
+
+    const DEFAULT_HOST: &'static str = "localhost";
+
+    /// Creates a `twirp::Client` with the registered mock handlers and middlewares.
+    pub fn build(self) -> Client {
+        Client {
+            http_client: reqwest::Client::new(),
+            inner: Arc::new(ClientRef {
+                base_url: Url::parse(&format!("http://{}/", Self::DEFAULT_HOST))
+                    .expect("must be a valid URL"),
+                middlewares: self.middleware,
+            }),
+            host: None,
+            mock_handlers: Some(self.mocks),
         }
     }
 }

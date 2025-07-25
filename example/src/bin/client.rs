@@ -9,11 +9,14 @@ pub mod service {
             include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
         }
     }
+    pub mod status {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/service.status.v1.rs"));
+        }
+    }
 }
 
-use service::haberdash::v1::{
-    GetStatusRequest, GetStatusResponse, HaberdasherApi, MakeHatRequest, MakeHatResponse,
-};
+use service::haberdash::v1::{HaberdasherApi, MakeHatRequest};
 
 /// You can run this end-to-end example by running both a server and a client and observing the requests/responses.
 ///
@@ -88,23 +91,71 @@ impl Middleware for PrintResponseHeaders {
     }
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
-struct MockHaberdasherApiClient;
+#[cfg(test)]
+mod tests {
+    use twirp::client::MockClientBuilder;
 
-#[async_trait]
-impl HaberdasherApi for MockHaberdasherApiClient {
-    async fn make_hat(
-        &self,
-        _req: Request<MakeHatRequest>,
-    ) -> twirp::Result<twirp::Response<MakeHatResponse>> {
-        todo!()
+    use crate::service::haberdash::v1::mocks::MockHaberdasherApiClient;
+    use crate::service::haberdash::v1::{GetStatusRequest, GetStatusResponse, MakeHatResponse};
+    use crate::service::status::v1::mocks::MockStatusApiClient;
+    use crate::service::status::v1::{GetSystemStatusRequest, GetSystemStatusResponse, StatusApi};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_client_with_mock() {
+        let client = MockClientBuilder::new()
+            .with_mock(MockHaberdasherApiClient::new(Mock))
+            .with_mock(MockStatusApiClient::new(Mock))
+            .build();
+        let resp = client
+            .make_hat(Request::new(MakeHatRequest { inches: 1 }))
+            .await;
+        eprintln!("{:?}", resp);
+        assert!(resp.is_ok());
+        assert_eq!(42, resp.unwrap().into_body().size);
+
+        let resp = client
+            .get_system_status(Request::new(GetSystemStatusRequest {}))
+            .await;
+        eprintln!("{:?}", resp);
+        assert!(resp.is_ok());
+        assert_eq!("ok", resp.unwrap().into_body().status);
     }
 
-    async fn get_status(
-        &self,
-        _req: Request<GetStatusRequest>,
-    ) -> twirp::Result<twirp::Response<GetStatusResponse>> {
-        todo!()
+    struct Mock;
+
+    #[async_trait]
+    impl HaberdasherApi for Mock {
+        async fn make_hat(
+            &self,
+            req: Request<MakeHatRequest>,
+        ) -> twirp::Result<twirp::Response<MakeHatResponse>> {
+            eprintln!("Mock make_hat called with: {:?}", req);
+            Ok(twirp::Response::new(MakeHatResponse {
+                size: 42,
+                ..Default::default()
+            }))
+        }
+
+        async fn get_status(
+            &self,
+            _req: Request<GetStatusRequest>,
+        ) -> twirp::Result<twirp::Response<GetStatusResponse>> {
+            todo!()
+        }
+    }
+
+    #[async_trait]
+    impl StatusApi for Mock {
+        async fn get_system_status(
+            &self,
+            req: Request<GetSystemStatusRequest>,
+        ) -> twirp::Result<twirp::Response<GetSystemStatusResponse>> {
+            eprintln!("Mock get_system_status called with: {:?}", req);
+            Ok(twirp::Response::new(GetSystemStatusResponse {
+                status: "ok".into(),
+            }))
+        }
     }
 }
