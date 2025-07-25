@@ -4,7 +4,7 @@ use std::vec;
 
 use async_trait::async_trait;
 use reqwest::header::CONTENT_TYPE;
-use url::Url;
+use url::{Host, Url};
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
 use crate::{serialize_proto_message, Result, TwirpErrorResponse};
@@ -248,8 +248,8 @@ impl<'a> Next<'a> {
             // If we've got a test client with mock handlers: use those
             Box::pin(async move {
                 let url = req.url().clone();
-                let (service, method) = get_service_and_method(&url)?;
-                if let Some(handler) = mock_handlers.get(service) {
+                let (host, service, method) = get_service_and_method(&url)?;
+                if let Some(handler) = mock_handlers.get(host, service) {
                     handler.handle(method, req).await
                 } else {
                     Err(crate::bad_route(format!(
@@ -264,7 +264,7 @@ impl<'a> Next<'a> {
     }
 }
 
-fn get_service_and_method(url: &Url) -> Result<(&str, &str)> {
+fn get_service_and_method(url: &Url) -> Result<(Host<&str>, &str, &str)> {
     let Some(mut segments) = url.path_segments() else {
         return Err(crate::bad_route(format!(
             "invalid request to {}: no path segments",
@@ -277,12 +277,14 @@ fn get_service_and_method(url: &Url) -> Result<(&str, &str)> {
             url
         )));
     };
-    Ok((service, method))
+    let host = url.host().expect("not host in url");
+    Ok((host, service, method))
 }
 
 #[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Default)]
 pub(crate) struct MockHandlers {
+    /// A map of host/service names to mock handlers.
     handlers: HashMap<String, Arc<dyn MockHandler>>,
 }
 #[cfg(any(test, feature = "test-support"))]
@@ -293,13 +295,13 @@ impl MockHandlers {
         }
     }
 
-    pub fn add<M: MockHandler + 'static>(&mut self, handler: M) {
-        self.handlers
-            .insert(handler.service().to_string(), Arc::new(handler));
+    pub fn add<M: MockHandler + 'static>(&mut self, host: &str, handler: M) {
+        let key = format!("{}/{}", host, handler.service());
+        self.handlers.insert(key, Arc::new(handler));
     }
 
-    pub fn get(&self, service: &str) -> Option<Arc<dyn MockHandler>> {
-        self.handlers.get(service).cloned()
+    pub fn get(&self, host: Host<&str>, service: &str) -> Option<Arc<dyn MockHandler>> {
+        self.handlers.get(&format!("{}/{}", host, service)).cloned()
     }
 }
 
@@ -340,18 +342,26 @@ impl MockClientBuilder {
         self
     }
 
-    /// Add a mock handler for a service.
-    pub fn with_mock<M: MockHandler + 'static>(mut self, mock: M) -> Self {
-        self.mocks.add(mock);
+    /// Add a mock handler for a service using the default host.
+    pub fn with_mock<M: MockHandler + 'static>(self, mock: M) -> Self {
+        self.with_mock_for_host(Self::DEFAULT_HOST, mock)
+    }
+
+    /// Add a mock handler for a service for a specific host.
+    pub fn with_mock_for_host<M: MockHandler + 'static>(mut self, host: &str, mock: M) -> Self {
+        self.mocks.add(host, mock);
         self
     }
+
+    const DEFAULT_HOST: &'static str = "localhost";
 
     /// Creates a `twirp::Client` with the registered mock handlers and middlewares.
     pub fn build(self) -> Client {
         Client {
             http_client: reqwest::Client::new(),
             inner: Arc::new(ClientRef {
-                base_url: Url::parse("http://localhost/").expect("must be a valid URL"),
+                base_url: Url::parse(&format!("http://{}/", Self::DEFAULT_HOST))
+                    .expect("must be a valid URL"),
                 middlewares: self.middleware,
             }),
             host: None,
