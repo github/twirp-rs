@@ -171,7 +171,9 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         };
 
         //
-        // generate the client mock helper
+        // generate the client mock helpers
+        //
+        // TODO: Gate this code on a feature flag e.g. `std::env::var("CARGO_CFG_FEATURE_<FEATURE>").is_ok()`
         //
         let service_fqn = &service.fqn;
         let client_mock_name = format_ident!("Mock{rpc_trait_name}Client");
@@ -206,14 +208,11 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 async fn handle(&self, method: &str, req: twirp::reqwest::Request) -> twirp::Result<twirp::reqwest::Response> {
                     match method {
                         #(#method_matches)*
-                        _ => Err(twirp::bad_route(format!("unknown rpc `{method}` for service `{}`", super::SERVICE_FQN))),
+                        _ => Err(twirp::bad_route(format!("unknown rpc `{method}` for service `{}`, url: {:?}", super::SERVICE_FQN, req.url()))),
                     }
                 }
             }
         };
-        // TODO: Gate the mocks on a feature flag
-        // let test_support = std::env::var("CARGO_CFG_FEATURE_TEST_SUPPORT").is_ok();
-        // panic!("test-support: {test_support}");
         let mocks_mod = quote! {
             #[allow(dead_code)]
             pub mod mocks {

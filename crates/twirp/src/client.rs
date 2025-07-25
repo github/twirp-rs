@@ -246,17 +246,7 @@ impl<'a> Next<'a> {
             Box::pin(current.handle(req, self))
         } else if let Some(mock_handlers) = self.mock_handlers {
             // If we've got a test client with mock handlers: use those
-            Box::pin(async move {
-                let url = req.url().clone();
-                let (host, service, method) = get_service_and_method(&url)?;
-                if let Some(handler) = mock_handlers.get(&host, service) {
-                    handler.handle(method, req).await
-                } else {
-                    Err(crate::bad_route(format!(
-                        "no mock handler found for host: '{host}', service: '{service}'"
-                    )))
-                }
-            })
+            Box::pin(async move { execute_mocks(req, mock_handlers).await })
         } else {
             // Otherwise: execute the actual http request here
             Box::pin(async move { Ok(self.client.execute(req).await?) })
@@ -264,7 +254,12 @@ impl<'a> Next<'a> {
     }
 }
 
-fn get_service_and_method(url: &Url) -> Result<(Host<&str>, &str, &str)> {
+// #[cfg(any(test, feature = "test-support"))]
+async fn execute_mocks(
+    req: reqwest::Request,
+    mock_handlers: &MockHandlers,
+) -> Result<reqwest::Response> {
+    let url = req.url().clone();
     let Some(mut segments) = url.path_segments() else {
         return Err(crate::bad_route(format!(
             "invalid request to {}: no path segments",
@@ -277,8 +272,15 @@ fn get_service_and_method(url: &Url) -> Result<(Host<&str>, &str, &str)> {
             url
         )));
     };
-    let host = url.host().expect("not host in url");
-    Ok((host, service, method))
+    let host = url.host().expect("no host in url");
+
+    if let Some(handler) = mock_handlers.get(&host, service) {
+        handler.handle(method, req).await
+    } else {
+        Err(crate::bad_route(format!(
+            "no mock handler found for host: '{host}', service: '{service}'"
+        )))
+    }
 }
 
 // #[cfg(any(test, feature = "test-support"))]
