@@ -249,11 +249,11 @@ impl<'a> Next<'a> {
             Box::pin(async move {
                 let url = req.url().clone();
                 let (host, service, method) = get_service_and_method(&url)?;
-                if let Some(handler) = mock_handlers.get(host, service) {
+                if let Some(handler) = mock_handlers.get(&host, service) {
                     handler.handle(method, req).await
                 } else {
                     Err(crate::bad_route(format!(
-                        "no mock handler found for service: '{service}'"
+                        "no mock handler found for host: '{host}', service: '{service}'"
                     )))
                 }
             })
@@ -281,26 +281,28 @@ fn get_service_and_method(url: &Url) -> Result<(Host<&str>, &str, &str)> {
     Ok((host, service, method))
 }
 
-#[cfg(any(test, feature = "test-support"))]
+// #[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Default)]
 pub(crate) struct MockHandlers {
     /// A map of host/service names to mock handlers.
     handlers: HashMap<String, Arc<dyn MockHandler>>,
 }
-#[cfg(any(test, feature = "test-support"))]
+// #[cfg(any(test, feature = "test-support"))]
 impl MockHandlers {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             handlers: HashMap::new(),
         }
     }
 
+    #[allow(dead_code)]
     pub fn add<M: MockHandler + 'static>(&mut self, host: &str, handler: M) {
         let key = format!("{}/{}", host, handler.service());
         self.handlers.insert(key, Arc::new(handler));
     }
 
-    pub fn get(&self, host: Host<&str>, service: &str) -> Option<Arc<dyn MockHandler>> {
+    pub fn get(&self, host: &Host<&str>, service: &str) -> Option<Arc<dyn MockHandler>> {
         self.handlers.get(&format!("{}/{}", host, service)).cloned()
     }
 }

@@ -95,9 +95,9 @@ impl Middleware for PrintResponseHeaders {
 mod tests {
     use twirp::client::MockClientBuilder;
 
-    use crate::service::haberdash::v1::test::MockHaberdasherApiClient;
+    use crate::service::haberdash::v1::mocks::MockHaberdasherApiClient;
     use crate::service::haberdash::v1::{GetStatusRequest, GetStatusResponse, MakeHatResponse};
-    use crate::service::status::v1::test::MockStatusApiClient;
+    use crate::service::status::v1::mocks::MockStatusApiClient;
     use crate::service::status::v1::{GetSystemStatusRequest, GetSystemStatusResponse, StatusApi};
 
     use super::*;

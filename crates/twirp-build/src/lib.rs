@@ -186,7 +186,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let method = &m.proto_name;
             method_matches.push(quote! {
                 #method => {
-                    twirp::test::encode_response(self.inner.#name(twirp::test::decode_request(req).await?).await?)
+                    twirp::mock::encode_response(self.inner.#name(twirp::mock::decode_request(req).await?).await?)
                 }
             });
         }
@@ -214,9 +214,9 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         // TODO: Gate the mocks on a feature flag
         // let test_support = std::env::var("CARGO_CFG_FEATURE_TEST_SUPPORT").is_ok();
         // panic!("test-support: {test_support}");
-        let test_mod = quote! {
+        let mocks_mod = quote! {
             #[allow(dead_code)]
-            pub mod test {
+            pub mod mocks {
                 use super::*;
 
                 #client_mock_struct
@@ -238,7 +238,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 
             #client_trait
 
-            #test_mod
+            #mocks_mod
         };
 
         let ast: syn::File = syn::parse2(generated)
