@@ -41,9 +41,7 @@ pub async fn main() {
     let api_impl = HaberdasherApiServer {};
     let middleware = twirp::tower::builder::ServiceBuilder::new()
         .layer(middleware::from_fn(request_id_middleware));
-    let twirp_routes = Router::new()
-        .nest(haberdash::SERVICE_FQN, haberdash::router(api_impl))
-        .layer(middleware);
+    let twirp_routes = haberdash::router(api_impl).layer(middleware);
     let app = Router::new()
         .nest("/twirp", twirp_routes)
         .route("/_ping", get(ping))
@@ -178,10 +176,8 @@ mod test {
 
     impl NetServer {
         async fn start(api_impl: HaberdasherApiServer) -> Self {
-            let twirp_routes =
-                Router::new().nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
             let app = Router::new()
-                .nest("/twirp", twirp_routes)
+                .nest("/twirp", haberdash::router(api_impl))
                 .route("/_ping", get(ping))
                 .fallback(twirp::server::not_found_handler);
 

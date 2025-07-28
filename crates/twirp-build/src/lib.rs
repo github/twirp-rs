@@ -128,7 +128,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         for m in &service.methods {
             let name = &m.name;
             let input_type = &m.input_type;
-            let path = format!("/{uri}", uri = m.proto_name);
+            let path = format!("/{}/{}", &service.fqn, m.proto_name);
 
             route_calls.push(quote! {
                 .route(#path, |api: T, req: twirp::Request<#input_type>| async move {

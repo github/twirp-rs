@@ -27,6 +27,13 @@ where
         }
     }
 
+    pub fn service(self, path: &str) -> Self {
+        TwirpRouterBuilder {
+            service: self.service,
+            router: Router::new().nest(path, self.router),
+        }
+    }
+
     /// Add a handler for an `rpc` to the router.
     ///
     /// The generated code passes a closure that calls the method, like
