@@ -33,13 +33,13 @@ pub fn test_api_router() -> Router {
     // NB: This part would be generated
     let test_router = TwirpRouterBuilder::new(api)
         .route(
-            "/Ping",
+            "/test.TestAPI/Ping",
             |api: Arc<TestApiServer>, req: http::Request<PingRequest>| async move {
                 api.ping(req).await
             },
         )
         .route(
-            "/Boom",
+            "/test.TestAPI/Boom",
             |api: Arc<TestApiServer>, req: http::Request<PingRequest>| async move {
                 api.boom(req).await
             },
@@ -47,7 +47,7 @@ pub fn test_api_router() -> Router {
         .build();
 
     axum::Router::new()
-        .nest("/twirp/test.TestAPI", test_router)
+        .nest("/twirp", test_router)
         .fallback(crate::server::not_found_handler)
 }
 
