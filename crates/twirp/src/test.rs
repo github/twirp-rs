@@ -31,15 +31,15 @@ pub fn test_api_router() -> Router {
     let api = Arc::new(TestApiServer {});
 
     // NB: This part would be generated
-    let test_router = TwirpRouterBuilder::new(api)
+    let test_router = TwirpRouterBuilder::new("/test.TestAPI", api)
         .route(
-            "/test.TestAPI/Ping",
+            "/Ping",
             |api: Arc<TestApiServer>, req: http::Request<PingRequest>| async move {
                 api.ping(req).await
             },
         )
         .route(
-            "/test.TestAPI/Boom",
+            "/Boom",
             |api: Arc<TestApiServer>, req: http::Request<PingRequest>| async move {
                 api.boom(req).await
             },
