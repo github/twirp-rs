@@ -95,9 +95,9 @@ impl Middleware for PrintResponseHeaders {
 mod tests {
     use twirp::client::DirectClientBuilder;
 
-    use crate::service::haberdash::v1::mocks::MockHaberdasherApiClient;
+    use crate::service::haberdash::v1::handler::HaberdasherApiHandler;
     use crate::service::haberdash::v1::{GetStatusRequest, GetStatusResponse, MakeHatResponse};
-    use crate::service::status::v1::mocks::MockStatusApiClient;
+    use crate::service::status::v1::handler::StatusApiHandler;
     use crate::service::status::v1::{GetSystemStatusRequest, GetSystemStatusResponse, StatusApi};
 
     use super::*;
@@ -105,8 +105,8 @@ mod tests {
     #[tokio::test]
     async fn test_client_with_mocks() {
         let client = DirectClientBuilder::new()
-            .with_handler(MockHaberdasherApiClient::new(Mock))
-            .with_handler(MockStatusApiClient::new(Mock))
+            .with_handler(HaberdasherApiHandler::new(Mock))
+            .with_handler(StatusApiHandler::new(Mock))
             .build();
         let resp = client
             .make_hat(Request::new(MakeHatRequest { inches: 1 }))

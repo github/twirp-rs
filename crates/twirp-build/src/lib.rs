@@ -176,9 +176,9 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         // TODO: Gate this code on a feature flag e.g. `std::env::var("CARGO_CFG_FEATURE_<FEATURE>").is_ok()`
         //
         let service_fqn = &service.fqn;
-        let client_mock_name = format_ident!("Mock{rpc_trait_name}Client");
-        let client_mock_struct = quote! {
-            pub struct #client_mock_name {
+        let handler_name = format_ident!("{rpc_trait_name}Handler");
+        let handler_struct = quote! {
+            pub struct #handler_name {
                 inner: std::sync::Arc<dyn #rpc_trait_name>,
             }
         };
@@ -192,8 +192,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 }
             });
         }
-        let client_mock_impl = quote! {
-            impl #client_mock_name {
+        let handler_impl = quote! {
+            impl #handler_name {
                 #[allow(clippy::new_ret_no_self)]
                 pub fn new<M: #rpc_trait_name + 'static>(inner: M) -> Self {
                     Self { inner: std::sync::Arc::new(inner) }
@@ -201,7 +201,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             }
 
             #[twirp::async_trait::async_trait]
-            impl twirp::client::DirectHandler for #client_mock_name {
+            impl twirp::client::DirectHandler for #handler_name {
                 fn service(&self) -> &str {
                     #service_fqn
                 }
@@ -213,13 +213,13 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 }
             }
         };
-        let mocks_mod = quote! {
+        let direct_api_handler = quote! {
             #[allow(dead_code)]
-            pub mod mocks {
+            pub mod handler {
                 use super::*;
 
-                #client_mock_struct
-                #client_mock_impl
+                #handler_struct
+                #handler_impl
             }
         };
 
@@ -237,7 +237,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 
             #client_trait
 
-            #mocks_mod
+            #direct_api_handler
         };
 
         let ast: syn::File = syn::parse2(generated)

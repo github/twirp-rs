@@ -6,8 +6,7 @@ use axum::extract::{Request, State};
 use axum::Router;
 use http_body_util::BodyExt;
 
-use crate::{malformed, serialize_proto_message, Result};
-use crate::{server, TwirpErrorResponse};
+use crate::{malformed, serialize_proto_message, server, Result, TwirpErrorResponse};
 
 /// Builder object used by generated code to build a Twirp service.
 ///
@@ -59,7 +58,7 @@ where
     }
 }
 
-// NOTE: For testing and mocking only.
+/// Decode a `reqwest::Request` into a `http::Request<I>`.
 pub async fn decode_request<I>(mut req: reqwest::Request) -> Result<http::Request<I>>
 where
     I: prost::Message + Default,
@@ -82,7 +81,7 @@ where
     Ok(req)
 }
 
-// NOTE: For testing and mocking only.
+/// Encode a `http::Response<O>` into a `reqwest::Response`.
 pub fn encode_response<O>(resp: http::Response<O>) -> Result<reqwest::Response>
 where
     O: prost::Message + Default,

@@ -355,7 +355,7 @@ impl DirectClientBuilder {
 
     const DEFAULT_HOST: &'static str = "localhost";
 
-    /// Creates a `twirp::Client` with the registered mock handlers and middlewares.
+    /// Creates a `twirp::Client` with the registered handlers and middlewares.
     pub fn build(self) -> Client {
         Client {
             http_client: reqwest::Client::new(),
