@@ -10,26 +10,43 @@ use url::Url;
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
 use crate::{serialize_proto_message, Result, TwirpErrorResponse};
 
-/// Builder to easily create twirp clients with middleware.
+/// Builder to easily create twirp clients.
 pub struct ClientBuilder {
     base_url: Url,
     http_client: reqwest::Client,
+    handlers: RequestHandlers,
     middleware: Vec<Box<dyn Middleware>>,
 }
 
 impl ClientBuilder {
+    /// Creates a `twirp::ClientBuilder` with a base URL and HTTP client.
     pub fn new(base_url: Url, http_client: reqwest::Client) -> Self {
         Self {
             base_url,
-            middleware: vec![],
             http_client,
+            middleware: vec![],
+            handlers: RequestHandlers::new(),
+        }
+    }
+
+    const DEFAULT_HOST: &'static str = "localhost";
+
+    /// Creates a `twirp::ClientBuilder` suitable for registering request handlers instead of making http requests.
+    /// NOTE: uses a default base URL and HTTP client.
+    pub fn direct() -> Self {
+        Self {
+            base_url: Url::parse(&format!("http://{}/", Self::DEFAULT_HOST))
+                .expect("must be a valid URL"),
+            http_client: reqwest::Client::new(),
+            middleware: vec![],
+            handlers: RequestHandlers::new(),
         }
     }
 
     /// Add middleware to the client that will be called on each request.
     /// Middlewares are invoked in the order they are added as part of the
     /// request cycle.
-    pub fn with<M>(self, middleware: M) -> Self
+    pub fn with_middleware<M>(self, middleware: M) -> Self
     where
         M: Middleware,
     {
@@ -38,8 +55,24 @@ impl ClientBuilder {
         Self {
             base_url: self.base_url,
             http_client: self.http_client,
+            handlers: self.handlers,
             middleware: mw,
         }
+    }
+
+    /// Add a handler for a service using the default host.
+    pub fn with_handler<M: DirectHandler + 'static>(self, handler: M) -> Self {
+        self.with_handler_for_host(Self::DEFAULT_HOST, handler)
+    }
+
+    /// Add a handler for a service for a specific host.
+    pub fn with_handler_for_host<M: DirectHandler + 'static>(
+        mut self,
+        host: &str,
+        handler: M,
+    ) -> Self {
+        self.handlers.add(host, handler);
+        self
     }
 
     /// Creates a `twirp::Client`.
@@ -47,7 +80,12 @@ impl ClientBuilder {
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn build(self) -> Client {
-        Client::new(self.base_url, self.http_client, self.middleware)
+        let handlers = if self.handlers.handlers.is_empty() {
+            None
+        } else {
+            Some(self.handlers)
+        };
+        Client::new(self.base_url, self.http_client, self.middleware, handlers)
     }
 }
 
@@ -88,6 +126,7 @@ impl Client {
         base_url: Url,
         http_client: reqwest::Client,
         middlewares: Vec<Box<dyn Middleware>>,
+        handlers: Option<RequestHandlers>,
     ) -> Self {
         let base_url = if base_url.path().ends_with('/') {
             base_url
@@ -105,7 +144,7 @@ impl Client {
                 middlewares,
             }),
             host: None,
-            handlers: None,
+            handlers,
         }
     }
 
@@ -114,7 +153,7 @@ impl Client {
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn from_base_url(base_url: Url) -> Self {
-        Self::new(base_url, reqwest::Client::new(), vec![])
+        Self::new(base_url, reqwest::Client::new(), vec![], None)
     }
 
     /// The base URL of the service the client will call.
@@ -284,7 +323,7 @@ async fn execute_handlers(
 }
 
 #[derive(Clone, Default)]
-pub(crate) struct RequestHandlers {
+pub struct RequestHandlers {
     /// A map of host/service names to handlers.
     handlers: HashMap<String, Arc<dyn DirectHandler>>,
 }
@@ -310,64 +349,6 @@ impl RequestHandlers {
 pub trait DirectHandler: 'static + Send + Sync {
     fn service(&self) -> &str;
     async fn handle(&self, path: &str, mut req: reqwest::Request) -> Result<reqwest::Response>;
-}
-
-/// A twirp Client builder for create clients with service handlers.
-#[derive(Default)]
-pub struct DirectClientBuilder {
-    handlers: RequestHandlers,
-    middleware: Vec<Box<dyn Middleware>>,
-}
-
-impl DirectClientBuilder {
-    pub fn new() -> Self {
-        Self {
-            handlers: RequestHandlers::new(),
-            middleware: vec![],
-        }
-    }
-
-    /// Add middleware to the client that will be called on each request.
-    /// Middlewares are invoked in the order they are added as part of the
-    /// request cycle.
-    pub fn with<M>(mut self, middleware: M) -> Self
-    where
-        M: Middleware,
-    {
-        self.middleware.push(Box::new(middleware));
-        self
-    }
-
-    /// Add a handler for a service using the default host.
-    pub fn with_handler<M: DirectHandler + 'static>(self, handler: M) -> Self {
-        self.with_handler_for_host(Self::DEFAULT_HOST, handler)
-    }
-
-    /// Add a handler for a service for a specific host.
-    pub fn with_handler_for_host<M: DirectHandler + 'static>(
-        mut self,
-        host: &str,
-        handler: M,
-    ) -> Self {
-        self.handlers.add(host, handler);
-        self
-    }
-
-    const DEFAULT_HOST: &'static str = "localhost";
-
-    /// Creates a `twirp::Client` with the registered handlers and middlewares.
-    pub fn build(self) -> Client {
-        Client {
-            http_client: reqwest::Client::new(),
-            inner: Arc::new(ClientRef {
-                base_url: Url::parse(&format!("http://{}/", Self::DEFAULT_HOST))
-                    .expect("must be a valid URL"),
-                middlewares: self.middleware,
-            }),
-            host: None,
-            handlers: Some(self.handlers),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -409,7 +390,7 @@ mod tests {
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
 
         let client = ClientBuilder::new(base_url, reqwest::Client::new())
-            .with(AssertRouting {
+            .with_middleware(AssertRouting {
                 expected_url: "http://localhost:3001/twirp/test.TestAPI/Ping",
             })
             .build();

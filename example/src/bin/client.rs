@@ -43,8 +43,8 @@ pub async fn main() -> Result<(), GenericError> {
         Url::parse("http://xyz:3000/twirp/")?,
         twirp::reqwest::Client::default(),
     )
-    .with(RequestHeaders { hmac_key: None })
-    .with(PrintResponseHeaders {})
+    .with_middleware(RequestHeaders { hmac_key: None })
+    .with_middleware(PrintResponseHeaders {})
     .build();
     let resp = client
         .with_host("localhost")
@@ -93,8 +93,6 @@ impl Middleware for PrintResponseHeaders {
 
 #[cfg(test)]
 mod tests {
-    use twirp::client::DirectClientBuilder;
-
     use crate::service::haberdash::v1::handler::HaberdasherApiHandler;
     use crate::service::haberdash::v1::{GetStatusRequest, GetStatusResponse, MakeHatResponse};
     use crate::service::status::v1::handler::StatusApiHandler;
@@ -104,7 +102,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_with_mocks() {
-        let client = DirectClientBuilder::new()
+        let client = ClientBuilder::direct()
             .with_handler(HaberdasherApiHandler::new(Mock))
             .with_handler(StatusApiHandler::new(Mock))
             .build();
