@@ -61,11 +61,15 @@ impl ClientBuilder {
     }
 
     /// Add a handler for a service using the default host.
+    ///
+    /// Warning: If you register `DirectHandler`s like this, they will be called instead of making HTTP requests.
     pub fn with_handler<M: DirectHandler + 'static>(self, handler: M) -> Self {
         self.with_handler_for_host(Self::DEFAULT_HOST, handler)
     }
 
     /// Add a handler for a service for a specific host.
+    ///
+    /// Warning: If you register `DirectHandler`s like this, they will be called instead of making HTTP requests.
     pub fn with_handler_for_host<M: DirectHandler + 'static>(
         mut self,
         host: &str,
@@ -113,6 +117,10 @@ impl std::fmt::Debug for Client {
             .field("base_url", &self.inner.base_url)
             .field("client", &self.http_client)
             .field("middlewares", &self.inner.middlewares.len())
+            .field(
+                "handlers",
+                &self.handlers.as_ref().map(|x| x.len()).unwrap_or_default(),
+            )
             .finish()
     }
 }
@@ -342,6 +350,14 @@ impl RequestHandlers {
 
     pub fn get(&self, host: &Host<&str>, service: &str) -> Option<Arc<dyn DirectHandler>> {
         self.handlers.get(&format!("{}/{}", host, service)).cloned()
+    }
+
+    pub fn len(&self) -> usize {
+        self.handlers.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.handlers.is_empty()
     }
 }
 
