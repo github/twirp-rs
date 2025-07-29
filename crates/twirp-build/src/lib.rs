@@ -188,7 +188,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let method = &m.proto_name;
             method_matches.push(quote! {
                 #method => {
-                    twirp::mock::encode_response(self.inner.#name(twirp::mock::decode_request(req).await?).await?)
+                    twirp::details::encode_response(self.inner.#name(twirp::details::decode_request(req).await?).await?)
                 }
             });
         }
@@ -201,7 +201,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             }
 
             #[twirp::async_trait::async_trait]
-            impl twirp::client::MockHandler for #client_mock_name {
+            impl twirp::client::DirectHandler for #client_mock_name {
                 fn service(&self) -> &str {
                     #service_fqn
                 }

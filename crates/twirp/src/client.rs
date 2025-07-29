@@ -1,11 +1,9 @@
-#[cfg(any(test, feature = "test-support"))]
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec;
 
 use async_trait::async_trait;
 use reqwest::header::CONTENT_TYPE;
-#[cfg(any(test, feature = "test-support"))]
 use url::Host;
 use url::Url;
 
@@ -63,8 +61,7 @@ pub struct Client {
     http_client: reqwest::Client,
     inner: Arc<ClientRef>,
     host: Option<String>,
-    #[cfg(any(test, feature = "test-support"))]
-    mock_handlers: Option<MockHandlers>,
+    handlers: Option<RequestHandlers>,
 }
 
 struct ClientRef {
@@ -108,8 +105,7 @@ impl Client {
                 middlewares,
             }),
             host: None,
-            #[cfg(any(test, feature = "test-support"))]
-            mock_handlers: None,
+            handlers: None,
         }
     }
 
@@ -133,8 +129,7 @@ impl Client {
             http_client: self.http_client.clone(),
             inner: self.inner.clone(),
             host: Some(host.to_string()),
-            #[cfg(any(test, feature = "test-support"))]
-            mock_handlers: self.mock_handlers.clone(),
+            handlers: self.handlers.clone(),
         }
     }
 
@@ -165,8 +160,7 @@ impl Client {
         let next = Next::new(
             &self.http_client,
             &self.inner.middlewares,
-            #[cfg(any(test, feature = "test-support"))]
-            self.mock_handlers.as_ref(),
+            self.handlers.as_ref(),
         );
         let response = next.run(request).await?;
 
@@ -228,8 +222,7 @@ where
 pub struct Next<'a> {
     client: &'a reqwest::Client,
     middlewares: &'a [Box<dyn Middleware>],
-    #[cfg(any(test, feature = "test-support"))]
-    mock_handlers: Option<&'a MockHandlers>,
+    handlers: Option<&'a RequestHandlers>,
 }
 
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
@@ -238,13 +231,12 @@ impl<'a> Next<'a> {
     pub(crate) fn new(
         client: &'a reqwest::Client,
         middlewares: &'a [Box<dyn Middleware>],
-        #[cfg(any(test, feature = "test-support"))] mock_handlers: Option<&'a MockHandlers>,
+        handlers: Option<&'a RequestHandlers>,
     ) -> Self {
         Next {
             client,
             middlewares,
-            #[cfg(any(test, feature = "test-support"))]
-            mock_handlers,
+            handlers,
         }
     }
 
@@ -253,23 +245,19 @@ impl<'a> Next<'a> {
             // Run any middleware
             self.middlewares = rest;
             Box::pin(current.handle(req, self))
+        } else if let Some(handlers) = self.handlers {
+            // If we've got a client with direct request handlers: use those
+            Box::pin(async move { execute_handlers(req, handlers).await })
         } else {
-            #[cfg(any(test, feature = "test-support"))]
-            if let Some(mock_handlers) = self.mock_handlers {
-                // If we've got a test client with mock handlers: use those
-                return Box::pin(async move { execute_mocks(req, mock_handlers).await });
-            }
-
             // Otherwise: execute the actual http request here
             Box::pin(async move { Ok(self.client.execute(req).await?) })
         }
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
-async fn execute_mocks(
+async fn execute_handlers(
     req: reqwest::Request,
-    mock_handlers: &MockHandlers,
+    request_handlers: &RequestHandlers,
 ) -> Result<reqwest::Response> {
     let url = req.url().clone();
     let Some(mut segments) = url.path_segments() else {
@@ -286,63 +274,55 @@ async fn execute_mocks(
     };
     let host = url.host().expect("no host in url");
 
-    if let Some(handler) = mock_handlers.get(&host, service) {
+    if let Some(handler) = request_handlers.get(&host, service) {
         handler.handle(method, req).await
     } else {
         Err(crate::bad_route(format!(
-            "no mock handler found for host: '{host}', service: '{service}'"
+            "no handler found for host: '{host}', service: '{service}'"
         )))
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Default)]
-pub(crate) struct MockHandlers {
-    /// A map of host/service names to mock handlers.
-    handlers: HashMap<String, Arc<dyn MockHandler>>,
+pub(crate) struct RequestHandlers {
+    /// A map of host/service names to handlers.
+    handlers: HashMap<String, Arc<dyn DirectHandler>>,
 }
-#[cfg(any(test, feature = "test-support"))]
-impl MockHandlers {
-    #[allow(dead_code)]
+
+impl RequestHandlers {
     pub fn new() -> Self {
         Self {
             handlers: HashMap::new(),
         }
     }
 
-    #[allow(dead_code)]
-    pub fn add<M: MockHandler + 'static>(&mut self, host: &str, handler: M) {
+    pub fn add<M: DirectHandler + 'static>(&mut self, host: &str, handler: M) {
         let key = format!("{}/{}", host, handler.service());
         self.handlers.insert(key, Arc::new(handler));
     }
 
-    pub fn get(&self, host: &Host<&str>, service: &str) -> Option<Arc<dyn MockHandler>> {
+    pub fn get(&self, host: &Host<&str>, service: &str) -> Option<Arc<dyn DirectHandler>> {
         self.handlers.get(&format!("{}/{}", host, service)).cloned()
     }
 }
 
-// TODO: MockHandler could be behind the `test-support` feature flag, but the twirp-build generated
-// code depends on `MockHandler` and would also need to appropriately configure flags.
-
 #[async_trait]
-pub trait MockHandler: 'static + Send + Sync {
+pub trait DirectHandler: 'static + Send + Sync {
     fn service(&self) -> &str;
     async fn handle(&self, path: &str, mut req: reqwest::Request) -> Result<reqwest::Response>;
 }
 
-/// A twirp Client builder for create clients with mock service handlers.
-#[cfg(any(test, feature = "test-support"))]
+/// A twirp Client builder for create clients with service handlers.
 #[derive(Default)]
-pub struct MockClientBuilder {
-    mocks: MockHandlers,
+pub struct DirectClientBuilder {
+    handlers: RequestHandlers,
     middleware: Vec<Box<dyn Middleware>>,
 }
 
-#[cfg(any(test, feature = "test-support"))]
-impl MockClientBuilder {
+impl DirectClientBuilder {
     pub fn new() -> Self {
         Self {
-            mocks: MockHandlers::new(),
+            handlers: RequestHandlers::new(),
             middleware: vec![],
         }
     }
@@ -358,14 +338,18 @@ impl MockClientBuilder {
         self
     }
 
-    /// Add a mock handler for a service using the default host.
-    pub fn with_mock<M: MockHandler + 'static>(self, mock: M) -> Self {
-        self.with_mock_for_host(Self::DEFAULT_HOST, mock)
+    /// Add a handler for a service using the default host.
+    pub fn with_handler<M: DirectHandler + 'static>(self, handler: M) -> Self {
+        self.with_handler_for_host(Self::DEFAULT_HOST, handler)
     }
 
-    /// Add a mock handler for a service for a specific host.
-    pub fn with_mock_for_host<M: MockHandler + 'static>(mut self, host: &str, mock: M) -> Self {
-        self.mocks.add(host, mock);
+    /// Add a handler for a service for a specific host.
+    pub fn with_handler_for_host<M: DirectHandler + 'static>(
+        mut self,
+        host: &str,
+        handler: M,
+    ) -> Self {
+        self.handlers.add(host, handler);
         self
     }
 
@@ -381,7 +365,7 @@ impl MockClientBuilder {
                 middlewares: self.middleware,
             }),
             host: None,
-            mock_handlers: Some(self.mocks),
+            handlers: Some(self.handlers),
         }
     }
 }

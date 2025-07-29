@@ -1,7 +1,6 @@
 pub mod client;
 pub mod error;
 pub mod headers;
-pub mod mock;
 pub mod server;
 
 #[cfg(any(test, feature = "test-support"))]
