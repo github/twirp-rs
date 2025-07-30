@@ -6,7 +6,6 @@ import "google/protobuf/timestamp.proto";
 package service.status.v1;
 option go_package = "status.v1";
 
-// A Haberdasher makes hats for clients.
 service StatusAPI {
   rpc GetSystemStatus(GetSystemStatusRequest) returns (GetSystemStatusResponse);
 }
