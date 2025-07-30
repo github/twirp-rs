@@ -1,4 +1,4 @@
-# `twirp-build`
+# `twirp`
 
 [Twirp is an RPC protocol](https://twitchtv.github.io/twirp/docs/spec_v7.html) based on HTTP and Protocol Buffers (proto). The protocol uses HTTP URLs to specify the RPC endpoints, and sends/receives proto messages as HTTP request/response bodies. Services are defined in a [.proto file](https://developers.google.com/protocol-buffers/docs/proto3), allowing easy implementation of RPC services with auto-generated clients and servers in different languages.
 

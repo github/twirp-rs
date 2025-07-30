@@ -1,4 +1,4 @@
-#![doc = include_str!("../../twirp/README.md")]
+#![doc = include_str!("../README.md")]
 
 use quote::{format_ident, quote};
 
