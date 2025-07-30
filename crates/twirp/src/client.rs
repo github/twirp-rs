@@ -103,12 +103,12 @@ pub struct Client {
     http_client: reqwest::Client,
     inner: Arc<ClientRef>,
     host: Option<String>,
-    handlers: Option<RequestHandlers>,
 }
 
 struct ClientRef {
     base_url: Url,
     middlewares: Vec<Box<dyn Middleware>>,
+    handlers: Option<RequestHandlers>,
 }
 
 impl std::fmt::Debug for Client {
@@ -119,7 +119,12 @@ impl std::fmt::Debug for Client {
             .field("middlewares", &self.inner.middlewares.len())
             .field(
                 "handlers",
-                &self.handlers.as_ref().map(|x| x.len()).unwrap_or_default(),
+                &self
+                    .inner
+                    .handlers
+                    .as_ref()
+                    .map(|x| x.len())
+                    .unwrap_or_default(),
             )
             .finish()
     }
@@ -150,9 +155,9 @@ impl Client {
             inner: Arc::new(ClientRef {
                 base_url,
                 middlewares,
+                handlers,
             }),
             host: None,
-            handlers,
         }
     }
 
@@ -176,7 +181,6 @@ impl Client {
             http_client: self.http_client.clone(),
             inner: self.inner.clone(),
             host: Some(host.to_string()),
-            handlers: self.handlers.clone(),
         }
     }
 
@@ -207,7 +211,7 @@ impl Client {
         let next = Next::new(
             &self.http_client,
             &self.inner.middlewares,
-            self.handlers.as_ref(),
+            self.inner.handlers.as_ref(),
         );
         let response = next.run(request).await?;
 
