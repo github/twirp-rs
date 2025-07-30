@@ -34,7 +34,11 @@ prost-build = "0.13"
 
 Add a `build.rs` file to your project to compile the protos and generate Rust code:
 
-```rust
+<!--
+`rust` gets syntax highlighting in GitHub UI and Rustdoc contexts
+` ,ignore` (including the space) makes rust tests ignore the code without breaking syntax highlighting
+-->
+```rust ,ignore
 fn main() {
     let proto_source_files = ["./service.proto"];
 
@@ -55,7 +59,11 @@ This generates code that you can find in `target/build/your-project-*/out/exampl
 
 Include the generated code, create a router, register your service, and then serve those routes in the hyper server:
 
-```rust
+<!--
+`rust` gets syntax highlighting in GitHub UI and Rustdoc contexts
+` ,ignore` (including the space) makes rust tests ignore the code without breaking syntax highlighting
+-->
+```rust ,ignore
 mod haberdash {
     include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
 }
@@ -93,7 +101,11 @@ This code creates an `axum::Router`, then hands it off to `axum::serve()` to han
 
 On the client side, you also get a generated twirp client (based on the rpc endpoints in your proto). Include the generated code, create a client, and start making rpc calls:
 
-``` rust
+<!--
+`rust` gets syntax highlighting in GitHub UI and Rustdoc contexts
+` ,ignore` (including the space) makes rust tests ignore the code without breaking syntax highlighting
+-->
+```rust ,ignore
 mod haberdash {
     include!(concat!(env!("OUT_DIR"), "/service.haberdash.v1.rs"));
 }
