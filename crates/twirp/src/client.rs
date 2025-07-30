@@ -14,7 +14,7 @@ use crate::{serialize_proto_message, Result, TwirpErrorResponse};
 pub struct ClientBuilder {
     base_url: Url,
     http_client: reqwest::Client,
-    handlers: RequestHandlers,
+    handlers: Option<RequestHandlers>,
     middleware: Vec<Box<dyn Middleware>>,
 }
 
@@ -25,7 +25,7 @@ impl ClientBuilder {
             base_url,
             http_client,
             middleware: vec![],
-            handlers: RequestHandlers::new(),
+            handlers: None,
         }
     }
 
@@ -39,7 +39,7 @@ impl ClientBuilder {
                 .expect("must be a valid URL"),
             http_client: reqwest::Client::new(),
             middleware: vec![],
-            handlers: RequestHandlers::new(),
+            handlers: Some(RequestHandlers::new()),
         }
     }
 
@@ -75,7 +75,11 @@ impl ClientBuilder {
         host: &str,
         handler: M,
     ) -> Self {
-        self.handlers.add(host, handler);
+        if let Some(handlers) = &mut self.handlers {
+            handlers.add(host, handler);
+        } else {
+            panic!("you must use `ClientBuilder::direct()` to register handlers");
+        }
         self
     }
 
@@ -84,12 +88,12 @@ impl ClientBuilder {
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn build(self) -> Client {
-        let handlers = if self.handlers.handlers.is_empty() {
-            None
-        } else {
-            Some(self.handlers)
-        };
-        Client::new(self.base_url, self.http_client, self.middleware, handlers)
+        Client::new(
+            self.base_url,
+            self.http_client,
+            self.middleware,
+            self.handlers,
+        )
     }
 }
 
