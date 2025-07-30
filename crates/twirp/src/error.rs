@@ -247,28 +247,28 @@ pub fn internal_server_error<E: std::error::Error>(err: E) -> TwirpErrorResponse
 // twirp response from server failed to decode
 impl From<prost::DecodeError> for TwirpErrorResponse {
     fn from(e: prost::DecodeError) -> Self {
-        internal(e.to_string())
+        internal(e.to_string()).with_rust_error(e)
     }
 }
 
 // twirp error response from server was invalid
 impl From<serde_json::Error> for TwirpErrorResponse {
     fn from(e: serde_json::Error) -> Self {
-        internal(e.to_string())
+        internal(e.to_string()).with_rust_error(e)
     }
 }
 
 // unable to build the request
 impl From<reqwest::Error> for TwirpErrorResponse {
     fn from(e: reqwest::Error) -> Self {
-        invalid_argument(e.to_string())
+        invalid_argument(e.to_string()).with_rust_error(e)
     }
 }
 
 // failed modify the request url
 impl From<url::ParseError> for TwirpErrorResponse {
     fn from(e: url::ParseError) -> Self {
-        invalid_argument(e.to_string())
+        invalid_argument(e.to_string()).with_rust_error(e)
     }
 }
 

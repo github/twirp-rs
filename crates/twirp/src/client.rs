@@ -1,32 +1,52 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec;
 
 use async_trait::async_trait;
 use reqwest::header::CONTENT_TYPE;
+use url::Host;
 use url::Url;
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
 use crate::{serialize_proto_message, Result, TwirpErrorResponse};
 
+/// Builder to easily create twirp clients.
 pub struct ClientBuilder {
     base_url: Url,
     http_client: reqwest::Client,
+    handlers: Option<RequestHandlers>,
     middleware: Vec<Box<dyn Middleware>>,
 }
 
 impl ClientBuilder {
+    /// Creates a `twirp::ClientBuilder` with a base URL and HTTP client.
     pub fn new(base_url: Url, http_client: reqwest::Client) -> Self {
         Self {
             base_url,
-            middleware: vec![],
             http_client,
+            middleware: vec![],
+            handlers: None,
+        }
+    }
+
+    const DEFAULT_HOST: &'static str = "localhost";
+
+    /// Creates a `twirp::ClientBuilder` suitable for registering request handlers instead of making http requests.
+    /// NOTE: uses a default base URL and HTTP client.
+    pub fn direct() -> Self {
+        Self {
+            base_url: Url::parse(&format!("http://{}/", Self::DEFAULT_HOST))
+                .expect("must be a valid URL"),
+            http_client: reqwest::Client::new(),
+            middleware: vec![],
+            handlers: Some(RequestHandlers::new()),
         }
     }
 
     /// Add middleware to the client that will be called on each request.
     /// Middlewares are invoked in the order they are added as part of the
     /// request cycle.
-    pub fn with<M>(self, middleware: M) -> Self
+    pub fn with_middleware<M>(self, middleware: M) -> Self
     where
         M: Middleware,
     {
@@ -35,12 +55,45 @@ impl ClientBuilder {
         Self {
             base_url: self.base_url,
             http_client: self.http_client,
+            handlers: self.handlers,
             middleware: mw,
         }
     }
 
+    /// Add a handler for a service using the default host.
+    ///
+    /// Warning: If you register `DirectHandler`s like this, they will be called instead of making HTTP requests.
+    pub fn with_handler<M: DirectHandler + 'static>(self, handler: M) -> Self {
+        self.with_handler_for_host(Self::DEFAULT_HOST, handler)
+    }
+
+    /// Add a handler for a service for a specific host.
+    ///
+    /// Warning: If you register `DirectHandler`s like this, they will be called instead of making HTTP requests.
+    pub fn with_handler_for_host<M: DirectHandler + 'static>(
+        mut self,
+        host: &str,
+        handler: M,
+    ) -> Self {
+        if let Some(handlers) = &mut self.handlers {
+            handlers.add(host, handler);
+        } else {
+            panic!("you must use `ClientBuilder::direct()` to register handlers");
+        }
+        self
+    }
+
+    /// Creates a `twirp::Client`.
+    ///
+    /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
+    /// you create one and **reuse** it.
     pub fn build(self) -> Client {
-        Client::new(self.base_url, self.http_client, self.middleware)
+        Client::new(
+            self.base_url,
+            self.http_client,
+            self.middleware,
+            self.handlers,
+        )
     }
 }
 
@@ -59,6 +112,7 @@ pub struct Client {
 struct ClientRef {
     base_url: Url,
     middlewares: Vec<Box<dyn Middleware>>,
+    handlers: Option<RequestHandlers>,
 }
 
 impl std::fmt::Debug for Client {
@@ -67,6 +121,15 @@ impl std::fmt::Debug for Client {
             .field("base_url", &self.inner.base_url)
             .field("client", &self.http_client)
             .field("middlewares", &self.inner.middlewares.len())
+            .field(
+                "handlers",
+                &self
+                    .inner
+                    .handlers
+                    .as_ref()
+                    .map(|x| x.len())
+                    .unwrap_or_default(),
+            )
             .finish()
     }
 }
@@ -80,6 +143,7 @@ impl Client {
         base_url: Url,
         http_client: reqwest::Client,
         middlewares: Vec<Box<dyn Middleware>>,
+        handlers: Option<RequestHandlers>,
     ) -> Self {
         let base_url = if base_url.path().ends_with('/') {
             base_url
@@ -95,6 +159,7 @@ impl Client {
             inner: Arc::new(ClientRef {
                 base_url,
                 middlewares,
+                handlers,
             }),
             host: None,
         }
@@ -105,9 +170,10 @@ impl Client {
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn from_base_url(base_url: Url) -> Self {
-        Self::new(base_url, reqwest::Client::new(), vec![])
+        Self::new(base_url, reqwest::Client::new(), vec![], None)
     }
 
+    /// The base URL of the service the client will call.
     pub fn base_url(&self) -> &Url {
         &self.inner.base_url
     }
@@ -146,7 +212,11 @@ impl Client {
             .build()?;
 
         // Create and execute the middleware handlers
-        let next = Next::new(&self.http_client, &self.inner.middlewares);
+        let next = Next::new(
+            &self.http_client,
+            &self.inner.middlewares,
+            self.inner.handlers.as_ref(),
+        );
         let response = next.run(request).await?;
 
         // These have to be extracted because reading the body consumes `Response`.
@@ -207,26 +277,102 @@ where
 pub struct Next<'a> {
     client: &'a reqwest::Client,
     middlewares: &'a [Box<dyn Middleware>],
+    handlers: Option<&'a RequestHandlers>,
 }
 
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
 
 impl<'a> Next<'a> {
-    pub(crate) fn new(client: &'a reqwest::Client, middlewares: &'a [Box<dyn Middleware>]) -> Self {
+    pub(crate) fn new(
+        client: &'a reqwest::Client,
+        middlewares: &'a [Box<dyn Middleware>],
+        handlers: Option<&'a RequestHandlers>,
+    ) -> Self {
         Next {
             client,
             middlewares,
+            handlers,
         }
     }
 
     pub fn run(mut self, req: reqwest::Request) -> BoxFuture<'a, Result<reqwest::Response>> {
         if let Some((current, rest)) = self.middlewares.split_first() {
+            // Run any middleware
             self.middlewares = rest;
             Box::pin(current.handle(req, self))
+        } else if let Some(handlers) = self.handlers {
+            // If we've got a client with direct request handlers: use those
+            Box::pin(async move { execute_handlers(req, handlers).await })
         } else {
+            // Otherwise: execute the actual http request here
             Box::pin(async move { Ok(self.client.execute(req).await?) })
         }
     }
+}
+
+async fn execute_handlers(
+    req: reqwest::Request,
+    request_handlers: &RequestHandlers,
+) -> Result<reqwest::Response> {
+    let url = req.url().clone();
+    let Some(mut segments) = url.path_segments() else {
+        return Err(crate::bad_route(format!(
+            "invalid request to {}: no path segments",
+            url
+        )));
+    };
+    let (Some(method), Some(service)) = (segments.next_back(), segments.next_back()) else {
+        return Err(crate::bad_route(format!(
+            "invalid request to {}: method and service required",
+            url
+        )));
+    };
+    let host = url.host().expect("no host in url");
+
+    if let Some(handler) = request_handlers.get(&host, service) {
+        handler.handle(method, req).await
+    } else {
+        Err(crate::bad_route(format!(
+            "no handler found for host: '{host}', service: '{service}'"
+        )))
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct RequestHandlers {
+    /// A map of host/service names to handlers.
+    handlers: HashMap<String, Arc<dyn DirectHandler>>,
+}
+
+impl RequestHandlers {
+    pub fn new() -> Self {
+        Self {
+            handlers: HashMap::new(),
+        }
+    }
+
+    pub fn add<M: DirectHandler + 'static>(&mut self, host: &str, handler: M) {
+        let key = format!("{}/{}", host, handler.service());
+        self.handlers.insert(key, Arc::new(handler));
+    }
+
+    pub fn get(&self, host: &Host<&str>, service: &str) -> Option<Arc<dyn DirectHandler>> {
+        self.handlers.get(&format!("{}/{}", host, service)).cloned()
+    }
+
+    pub fn len(&self) -> usize {
+        self.handlers.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.handlers.is_empty()
+    }
+}
+
+#[async_trait]
+pub trait DirectHandler: 'static + Send + Sync {
+    fn service(&self) -> &str;
+    async fn handle(&self, path: &str, mut req: reqwest::Request) -> Result<reqwest::Response>;
 }
 
 #[cfg(test)]
@@ -268,7 +414,7 @@ mod tests {
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
 
         let client = ClientBuilder::new(base_url, reqwest::Client::new())
-            .with(AssertRouting {
+            .with_middleware(AssertRouting {
                 expected_url: "http://localhost:3001/twirp/test.TestAPI/Ping",
             })
             .build();

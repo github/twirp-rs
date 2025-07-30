@@ -12,5 +12,6 @@ test:
 .PHONY: lint
 lint:
 	cargo fmt --all -- --check
+	cargo clippy -- --no-deps --deny warnings -D clippy::unwrap_used
 	cargo clippy --features test-support -- --no-deps --deny warnings -D clippy::unwrap_used
 	cargo clippy --tests -- --no-deps --deny warnings -A clippy::unwrap_used

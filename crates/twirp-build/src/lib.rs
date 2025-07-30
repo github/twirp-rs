@@ -171,6 +171,59 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             }
         };
 
+        //
+        // generate the client mock helpers
+        //
+        // TODO: Gate this code on a feature flag e.g. `std::env::var("CARGO_CFG_FEATURE_<FEATURE>").is_ok()`
+        //
+        let service_fqn = &service.fqn;
+        let handler_name = format_ident!("{rpc_trait_name}Handler");
+        let handler_struct = quote! {
+            pub struct #handler_name {
+                inner: std::sync::Arc<dyn #rpc_trait_name>,
+            }
+        };
+        let mut method_matches = Vec::with_capacity(service.methods.len());
+        for m in &service.methods {
+            let name = &m.name;
+            let method = &m.proto_name;
+            method_matches.push(quote! {
+                #method => {
+                    twirp::details::encode_response(self.inner.#name(twirp::details::decode_request(req).await?).await?)
+                }
+            });
+        }
+        let handler_impl = quote! {
+            impl #handler_name {
+                #[allow(clippy::new_ret_no_self)]
+                pub fn new<M: #rpc_trait_name + 'static>(inner: M) -> Self {
+                    Self { inner: std::sync::Arc::new(inner) }
+                }
+            }
+
+            #[twirp::async_trait::async_trait]
+            impl twirp::client::DirectHandler for #handler_name {
+                fn service(&self) -> &str {
+                    #service_fqn
+                }
+                async fn handle(&self, method: &str, req: twirp::reqwest::Request) -> twirp::Result<twirp::reqwest::Response> {
+                    match method {
+                        #(#method_matches)*
+                        _ => Err(twirp::bad_route(format!("unknown rpc `{method}` for service `{}`, url: {:?}", super::SERVICE_FQN, req.url()))),
+                    }
+                }
+            }
+        };
+        let direct_api_handler = quote! {
+            #[allow(dead_code)]
+            pub mod handler {
+                use super::*;
+
+                #handler_struct
+                #handler_impl
+            }
+        };
+
         // generate the service and client as a single file. run it through
         // prettyplease before outputting it.
         let generated = quote! {
@@ -183,6 +236,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             #router
 
             #client_trait
+
+            #direct_api_handler
         };
 
         let ast: syn::File = syn::parse2(generated)
