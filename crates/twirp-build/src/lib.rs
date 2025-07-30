@@ -209,7 +209,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 async fn handle(&self, method: &str, req: twirp::reqwest::Request) -> twirp::Result<twirp::reqwest::Response> {
                     match method {
                         #(#method_matches)*
-                        _ => Err(twirp::bad_route(format!("unknown rpc `{method}` for service `{}`, url: {:?}", super::SERVICE_FQN, req.url()))),
+                        _ => Err(twirp::bad_route(format!("unknown rpc `{method}` for service `{}`, url: {:?}", #service_fqn, req.url()))),
                     }
                 }
             }
@@ -228,8 +228,6 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         // prettyplease before outputting it.
         let generated = quote! {
             pub use twirp;
-
-            pub const SERVICE_FQN: &str = #service_fqn_path;
 
             #server_trait
 
