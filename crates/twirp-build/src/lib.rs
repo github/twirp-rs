@@ -89,6 +89,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let service = Service::from_prost(service);
 
         // generate the twirp server
+        let service_fqn_path = format!("/{}", service.fqn);
         let mut trait_methods = Vec::with_capacity(service.methods.len());
         let mut proxy_methods = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
@@ -128,7 +129,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         for m in &service.methods {
             let name = &m.name;
             let input_type = &m.input_type;
-            let path = format!("/{uri}", uri = m.proto_name);
+            let path = format!("/{}", m.proto_name);
 
             route_calls.push(quote! {
                 .route(#path, |api: T, req: twirp::Request<#input_type>| async move {
@@ -141,7 +142,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 where
                     T: #rpc_trait_name + Clone + Send + Sync + 'static
                 {
-                    twirp::details::TwirpRouterBuilder::new(api)
+                    twirp::details::TwirpRouterBuilder::new(#service_fqn_path, api)
                         #(#route_calls)*
                         .build()
                 }
@@ -172,7 +173,6 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 
         // generate the service and client as a single file. run it through
         // prettyplease before outputting it.
-        let service_fqn_path = format!("/{}", service.fqn);
         let generated = quote! {
             pub use twirp;
 
