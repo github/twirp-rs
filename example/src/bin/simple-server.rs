@@ -34,9 +34,8 @@ async fn ping() -> &'static str {
 #[tokio::main]
 pub async fn main() {
     let api_impl = HaberdasherApiServer {};
-    let twirp_routes = Router::new().nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
     let app = Router::new()
-        .nest("/twirp", twirp_routes)
+        .nest("/twirp", haberdash::router(api_impl))
         .route("/_ping", get(ping))
         .fallback(twirp::server::not_found_handler);
 
@@ -138,10 +137,8 @@ mod test {
 
     impl NetServer {
         async fn start(api_impl: HaberdasherApiServer) -> Self {
-            let twirp_routes =
-                Router::new().nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
             let app = Router::new()
-                .nest("/twirp", twirp_routes)
+                .nest("/twirp", haberdash::router(api_impl))
                 .route("/_ping", get(ping))
                 .fallback(twirp::server::not_found_handler);
 

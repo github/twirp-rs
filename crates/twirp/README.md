@@ -66,10 +66,8 @@ use haberdash::{MakeHatRequest, MakeHatResponse};
 #[tokio::main]
 pub async fn main() {
     let api_impl = Arc::new(HaberdasherApiServer {});
-    let twirp_routes = Router::new()
-        .nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
     let app = Router::new()
-        .nest("/twirp", twirp_routes)
+        .nest("/twirp", haberdash::router(api_impl))
         .fallback(twirp::server::not_found_handler);
 
     let tcp_listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
