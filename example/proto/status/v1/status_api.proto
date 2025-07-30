@@ -1,0 +1,17 @@
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package service.status.v1;
+option go_package = "status.v1";
+
+service StatusAPI {
+  rpc GetSystemStatus(GetSystemStatusRequest) returns (GetSystemStatusResponse);
+}
+
+message GetSystemStatusRequest {}
+
+message GetSystemStatusResponse {
+    string status = 1;
+}
