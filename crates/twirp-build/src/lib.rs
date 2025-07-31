@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use quote::{format_ident, quote};
 
 /// Generates twirp services for protobuf rpc service definitions.
