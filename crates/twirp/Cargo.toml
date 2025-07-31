@@ -1,6 +1,6 @@
 [package]
 name = "twirp"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 description = "An async-compatible library for Twirp RPC in Rust."
 readme = "README.md"
