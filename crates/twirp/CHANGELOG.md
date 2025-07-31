@@ -7,11 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.1](https://github.com/github/twirp-rs/compare/twirp-v0.8.0...twirp-v0.8.1) - 2025-07-31
+## [0.9.0](https://github.com/github/twirp-rs/compare/twirp-v0.8.0...twirp-v0.9.0) - 2025-07-31
 
 ### Other
 
-- revert version to 0.8.0 so I can try the release-plz automation for releasing 0.9 ([#226](https://github.com/github/twirp-rs/pull/226))
 - Include the readme in rustdoc ([#225](https://github.com/github/twirp-rs/pull/225))
 - Allow mocking out requests ([#220](https://github.com/github/twirp-rs/pull/220))
 - Generate service fqn ([#221](https://github.com/github/twirp-rs/pull/221))
