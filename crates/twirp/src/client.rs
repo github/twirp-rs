@@ -220,6 +220,7 @@ impl Client {
         let response = next.run(request).await?;
 
         // These have to be extracted because reading the body consumes `Response`.
+        let version = response.version();
         let status = response.status();
         let headers = response.headers().clone();
         let extensions = response.extensions().clone();
@@ -231,6 +232,7 @@ impl Client {
                 O::decode(response.bytes().await?)
                     .map(|x| {
                         let mut resp = http::Response::new(x);
+                        *resp.version_mut() = version;
                         resp.headers_mut().extend(headers);
                         resp.extensions_mut().extend(extensions);
                         resp
