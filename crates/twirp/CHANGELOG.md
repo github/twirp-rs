@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/github/twirp-rs/compare/twirp-v0.9.0...twirp-v0.9.1) - 2025-08-14
+
+### Fixed
+
+- Preserve HTTP version in twirp client response ([#235](https://github.com/github/twirp-rs/pull/235))
+
+### Other
+
+- Bump tokio from 1.46.1 to 1.47.1 ([#231](https://github.com/github/twirp-rs/pull/231))
+
 ## [0.9.0](https://github.com/github/twirp-rs/compare/twirp-build-v0.8.0...twirp-build-v0.9.0) - 2025-07-31
 
 ### Breaking
@@ -34,7 +44,7 @@ let twirp_routes = Router::new()
         .nest(haberdash::SERVICE_FQN, haberdash::router(api_impl));
 ```
 
-This is unnecessary in 0.9.0 (the generated `router` function for each service does that for you). Instead, you would write: 
+This is unnecessary in 0.9.0 (the generated `router` function for each service does that for you). Instead, you would write:
 
 ``` rust
 let twirp_routes = haberdash::router(api_impl);
