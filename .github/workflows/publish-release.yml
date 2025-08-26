@@ -1,4 +1,7 @@
-name: Release and unpublished twirp/twirp-build packages
+# This workflow only publishes releases for PR's created by create-release-pr.yml
+#
+# See https://github.com/github/twirp-rs/blob/main/CONTRIBUTING.md#releasing for more details.
+name: Release any unpublished twirp/twirp-build packages
 
 permissions:
   contents: write
@@ -17,7 +20,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install Rust toolchain

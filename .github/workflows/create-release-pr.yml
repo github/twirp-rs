@@ -1,3 +1,6 @@
+# Launch this workflow with the "Run workflow" button in the Actions tab of the repository.
+#
+# See https://github.com/github/twirp-rs/blob/main/CONTRIBUTING.md#releasing for more details.
 name: Create release PR
 
 permissions:
@@ -20,7 +23,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install Rust toolchain
