@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 use quote::{format_ident, quote};
+use syn::parse_quote;
 
 /// Generates twirp services for protobuf rpc service definitions.
 ///
@@ -92,18 +93,18 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
 
         // generate the twirp server
         let service_fqn_path = format!("/{}", service.fqn);
-        let mut trait_methods = Vec::with_capacity(service.methods.len());
-        let mut proxy_methods = Vec::with_capacity(service.methods.len());
+        let mut trait_methods: Vec<syn::TraitItemFn> = Vec::with_capacity(service.methods.len());
+        let mut proxy_methods: Vec<syn::ImplItemFn> = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
             let name = &m.name;
             let input_type = &m.input_type;
             let output_type = &m.output_type;
 
-            trait_methods.push(quote! {
+            trait_methods.push(parse_quote! {
                 async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::Result<twirp::Response<#output_type>>;
             });
 
-            proxy_methods.push(quote! {
+            proxy_methods.push(parse_quote! {
                 async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::Result<twirp::Response<#output_type>> {
                     T::#name(&*self, req).await
                 }
@@ -111,12 +112,13 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         }
 
         let rpc_trait_name = &service.rpc_trait_name;
-        let server_trait = quote! {
+        let server_trait: syn::ItemTrait = parse_quote! {
             #[twirp::async_trait::async_trait]
             pub trait #rpc_trait_name: Send + Sync {
                 #(#trait_methods)*
             }
-
+        };
+        let server_trait_impl: syn::ItemImpl = parse_quote! {
             #[twirp::async_trait::async_trait]
             impl<T> #rpc_trait_name for std::sync::Arc<T>
             where
@@ -139,7 +141,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 })
             });
         }
-        let router = quote! {
+        let router: syn::ItemFn = parse_quote! {
             pub fn router<T>(api: T) -> twirp::Router
                 where
                     T: #rpc_trait_name + Clone + Send + Sync + 'static
@@ -153,20 +155,20 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         //
         // generate the twirp client
         //
-        let mut client_methods = Vec::with_capacity(service.methods.len());
+        let mut client_methods: Vec<syn::ImplItemFn> = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
             let name = &m.name;
             let input_type = &m.input_type;
             let output_type = &m.output_type;
             let request_path = format!("{}/{}", service.fqn, m.proto_name);
 
-            client_methods.push(quote! {
+            client_methods.push(parse_quote! {
                 async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::Result<twirp::Response<#output_type>> {
                     self.request(#request_path, req).await
                 }
             })
         }
-        let client_trait = quote! {
+        let client_trait: syn::ItemImpl = parse_quote! {
             #[twirp::async_trait::async_trait]
             impl #rpc_trait_name for twirp::client::Client {
                 #(#client_methods)*
@@ -180,22 +182,22 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         //
         let service_fqn = &service.fqn;
         let handler_name = format_ident!("{rpc_trait_name}Handler");
-        let handler_struct = quote! {
+        let handler_struct: syn::ItemStruct = parse_quote! {
             pub struct #handler_name {
                 inner: std::sync::Arc<dyn #rpc_trait_name>,
             }
         };
-        let mut method_matches = Vec::with_capacity(service.methods.len());
+        let mut method_matches: Vec<syn::Arm> = Vec::with_capacity(service.methods.len());
         for m in &service.methods {
             let name = &m.name;
             let method = &m.proto_name;
-            method_matches.push(quote! {
+            method_matches.push(parse_quote! {
                 #method => {
                     twirp::details::encode_response(self.inner.#name(twirp::details::decode_request(req).await?).await?)
                 }
             });
         }
-        let handler_impl = quote! {
+        let handler_impl: syn::ItemImpl = parse_quote! {
             impl #handler_name {
                 #[allow(clippy::new_ret_no_self)]
                 pub fn new<M: #rpc_trait_name + 'static>(inner: M) -> Self {
@@ -203,6 +205,8 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 }
             }
 
+        };
+        let handler_direct_impl: syn::ItemImpl = parse_quote! {
             #[twirp::async_trait::async_trait]
             impl twirp::client::DirectHandler for #handler_name {
                 fn service(&self) -> &str {
@@ -216,22 +220,24 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
                 }
             }
         };
-        let direct_api_handler = quote! {
+        let direct_api_handler: syn::ItemMod = parse_quote! {
             #[allow(dead_code)]
             pub mod handler {
                 use super::*;
 
                 #handler_struct
                 #handler_impl
+                #handler_direct_impl
             }
         };
 
         // generate the service and client as a single file. run it through
         // prettyplease before outputting it.
-        let generated = quote! {
+        let ast: syn::File = parse_quote! {
             pub use twirp;
 
             #server_trait
+            #server_trait_impl
 
             #router
 
@@ -240,8 +246,6 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             #direct_api_handler
         };
 
-        let ast: syn::File = syn::parse2(generated)
-            .expect("twirp-build generated invalid Rust. this is a bug in twirp-build, please file an issue");
         let code = prettyplease::unparse(&ast);
         buf.push_str(&code);
     }
