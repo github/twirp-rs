@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-use quote::{format_ident, quote};
+use quote::format_ident;
 use syn::parse_quote;
 
 /// Generates twirp services for protobuf rpc service definitions.
@@ -129,26 +129,26 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         };
 
         // generate the router
-        let mut route_calls = Vec::with_capacity(service.methods.len());
+        let mut expr: syn::Expr = parse_quote! {
+            twirp::details::TwirpRouterBuilder::new(#service_fqn_path, api)
+        };
         for m in &service.methods {
             let name = &m.name;
             let input_type = &m.input_type;
             let path = format!("/{}", m.proto_name);
 
-            route_calls.push(quote! {
-                .route(#path, |api: T, req: twirp::Request<#input_type>| async move {
+            expr = parse_quote! {
+                #expr.route(#path, |api: T, req: twirp::Request<#input_type>| async move {
                     api.#name(req).await
                 })
-            });
+            };
         }
         let router: syn::ItemFn = parse_quote! {
             pub fn router<T>(api: T) -> twirp::Router
                 where
                     T: #rpc_trait_name + Clone + Send + Sync + 'static
                 {
-                    twirp::details::TwirpRouterBuilder::new(#service_fqn_path, api)
-                        #(#route_calls)*
-                        .build()
+                    #expr.build()
                 }
         };
 
