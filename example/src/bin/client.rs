@@ -39,13 +39,10 @@ pub async fn main() -> Result<(), GenericError> {
     eprintln!("{:?}", resp);
 
     // customize the client with middleware
-    let client = ClientBuilder::new(
-        Url::parse("http://xyz:3000/twirp/")?,
-        twirp::reqwest::Client::default(),
-    )
-    .with_middleware(RequestHeaders { hmac_key: None })
-    .with_middleware(PrintResponseHeaders {})
-    .build();
+    let client = ClientBuilder::new(Url::parse("http://xyz:3000/twirp/")?)
+        .with_middleware(RequestHeaders { hmac_key: None })
+        .with_middleware(PrintResponseHeaders {})
+        .build();
     let resp = client
         .with_host("localhost")
         .make_hat(Request::new(MakeHatRequest { inches: 1 }))
