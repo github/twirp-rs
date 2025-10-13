@@ -13,17 +13,17 @@ use crate::{serialize_proto_message, Result, TwirpErrorResponse};
 /// Builder to easily create twirp clients.
 pub struct ClientBuilder {
     base_url: Url,
-    http_client: reqwest::Client,
+    http_client: Option<reqwest::Client>,
     handlers: Option<RequestHandlers>,
     middleware: Vec<Box<dyn Middleware>>,
 }
 
 impl ClientBuilder {
-    /// Creates a `twirp::ClientBuilder` with a base URL and HTTP client.
-    pub fn new(base_url: Url, http_client: reqwest::Client) -> Self {
+    /// Creates a `twirp::ClientBuilder` with a base URL.
+    pub fn new(base_url: Url) -> Self {
         Self {
             base_url,
-            http_client,
+            http_client: None,
             middleware: vec![],
             handlers: None,
         }
@@ -37,7 +37,7 @@ impl ClientBuilder {
         Self {
             base_url: Url::parse(&format!("http://{}/", Self::DEFAULT_HOST))
                 .expect("must be a valid URL"),
-            http_client: reqwest::Client::new(),
+            http_client: None,
             middleware: vec![],
             handlers: Some(RequestHandlers::new()),
         }
@@ -83,17 +83,19 @@ impl ClientBuilder {
         self
     }
 
+    /// Set the HTTP client. Without this a default HTTP client is used.
+    pub fn with_http_client(mut self, http_client: reqwest::Client) -> Self {
+        self.http_client = Some(http_client);
+        self
+    }
+
     /// Creates a `twirp::Client`.
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn build(self) -> Client {
-        Client::new(
-            self.base_url,
-            self.http_client,
-            self.middleware,
-            self.handlers,
-        )
+        let http_client = self.http_client.unwrap_or_default();
+        Client::new(self.base_url, http_client, self.middleware, self.handlers)
     }
 }
 
@@ -415,7 +417,7 @@ mod tests {
     async fn test_routes() {
         let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
 
-        let client = ClientBuilder::new(base_url, reqwest::Client::new())
+        let client = ClientBuilder::new(base_url)
             .with_middleware(AssertRouting {
                 expected_url: "http://localhost:3001/twirp/test.TestAPI/Ping",
             })
