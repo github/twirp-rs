@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.1](https://github.com/github/twirp-rs/compare/twirp-build-v0.9.0...twirp-build-v0.9.1) - 2025-10-13
+## [0.10.0](https://github.com/github/twirp-rs/compare/twirp-build-v0.9.0...twirp-build-v0.9.1) - 2025-10-13
 
-### Other
+### Changed
 
 - Use `parse_quote!` to make build time development easier ([#249](https://github.com/github/twirp-rs/pull/249))
 - update prost; prost-wkt[-build] doesn't have a release, yet ([#223](https://github.com/github/twirp-rs/pull/223))
