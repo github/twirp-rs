@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2](https://github.com/github/twirp-rs/compare/twirp-v0.9.1...twirp-v0.9.2) - 2025-10-13
+
+### Other
+
+- Move http client on twirp client build to it's own method. ([#261](https://github.com/github/twirp-rs/pull/261))
+- Bump hyper from 1.6.0 to 1.7.0 ([#248](https://github.com/github/twirp-rs/pull/248))
+- update prost; prost-wkt[-build] doesn't have a release, yet ([#223](https://github.com/github/twirp-rs/pull/223))
+
 ## [0.9.1](https://github.com/github/twirp-rs/compare/twirp-v0.9.0...twirp-v0.9.1) - 2025-08-14
 
 ### Fixed
