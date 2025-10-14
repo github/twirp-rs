@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.1](https://github.com/github/twirp-rs/compare/twirp-v0.10.0...twirp-v0.10.1) - 2025-10-14
 
-### Other
+### Added
 
 - Default headers work around ([#263](https://github.com/github/twirp-rs/pull/263))
 
