@@ -4,10 +4,10 @@ updates:
     directory: "/"
     schedule:
       interval: "cron"
-      cronjob: "0 5 1-7 * 0" # First Sunday of each month at 05:00 UTC
+      cronjob: "0 5 2 * *" # Second day of each month at 05:00 UTC
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "cron"
-      cronjob: "0 5 1-7 * 0" # First Sunday of each month at 05:00 UTC
+      cronjob: "0 5 2 * *" # Second day of each month at 05:00 UTC
