@@ -63,7 +63,7 @@ where
         Ok(tuple) => tuple,
         Err(err) => {
             return error::malformed("bad request")
-                .with_meta("error", &err.to_string())
+                .with_meta("error", &err)
                 .with_generic_error(err)
                 .into_response();
         }
@@ -77,7 +77,7 @@ where
         Ok(resp) => resp,
         Err(err) => {
             return error::internal("error serializing response")
-                .with_meta("error", &err.to_string())
+                .with_meta("error", &err)
                 .with_generic_error(err)
                 .into_response();
         }
