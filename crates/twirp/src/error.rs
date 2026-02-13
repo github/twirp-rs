@@ -199,7 +199,7 @@ impl TwirpErrorResponse {
         &mut self.meta
     }
 
-    pub fn with_meta<S: ToString>(mut self, key: S, value: S) -> Self {
+    pub fn with_meta<S1: ToString, S2: ToString>(mut self, key: S1, value: S2) -> Self {
         self.meta.insert(key.to_string(), value.to_string());
         self
     }
