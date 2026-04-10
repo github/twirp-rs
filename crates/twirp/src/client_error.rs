@@ -2,7 +2,7 @@
 
 use thiserror::Error;
 
-use crate::TwirpErrorResponse;
+use crate::{GenericError, TwirpErrorResponse};
 
 /// Error type returned by Twirp client calls.
 ///
@@ -18,7 +18,7 @@ pub enum ClientError {
 
     /// The response body could not be decoded (bad protobuf, malformed JSON, unexpected content type, etc.)
     #[error("invalid response: {0}")]
-    InvalidResponse(Box<dyn std::error::Error + Send + Sync>),
+    InvalidResponse(GenericError),
 
     /// The request URL could not be constructed.
     #[error("invalid url: {0}")]

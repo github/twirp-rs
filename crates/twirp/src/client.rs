@@ -233,12 +233,14 @@ impl Client {
         );
         let response = next.run(request).await?;
 
+        // These have to be extracted because reading the body consumes `Response`.
         let version = response.version();
         let status = response.status();
         let headers = response.headers().clone();
         let extensions = response.extensions().clone();
         let content_type = headers.get(CONTENT_TYPE).cloned();
 
+        // TODO: Include more info in the error cases: request path, content-type, etc.
         match (status, content_type) {
             (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
                 O::decode(response.bytes().await?)
@@ -255,6 +257,7 @@ impl Client {
                 if (status.is_client_error() || status.is_server_error())
                     && ct.as_bytes() == CONTENT_TYPE_JSON =>
             {
+                // TODO: Should middleware response extensions and headers be included in the error case?
                 let twirp_err: TwirpErrorResponse =
                     serde_json::from_slice(&response.bytes().await?)?;
                 Err(ClientError::Twirp(twirp_err))
