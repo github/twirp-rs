@@ -101,11 +101,11 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let output_type = &m.output_type;
 
             trait_methods.push(parse_quote! {
-                async fn #name(&self, req: twirp::Request<#input_type>) -> Result<twirp::Response<#output_type>, E>;
+                async fn #name(&self, req: twirp::Request<#input_type>) -> std::result::Result<twirp::Response<#output_type>, E>;
             });
 
             proxy_methods.push(parse_quote! {
-                async fn #name(&self, req: twirp::Request<#input_type>) -> Result<twirp::Response<#output_type>, E> {
+                async fn #name(&self, req: twirp::Request<#input_type>) -> std::result::Result<twirp::Response<#output_type>, E> {
                     T::#name(&*self, req).await
                 }
             });
