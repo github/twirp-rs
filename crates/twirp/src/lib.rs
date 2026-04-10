@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 pub mod client;
+pub mod client_error;
 pub mod error;
 pub mod headers;
 pub mod server;
@@ -12,6 +13,7 @@ pub mod test;
 pub mod details;
 
 pub use client::{Client, ClientBuilder, Middleware, Next};
+pub use client_error::ClientError;
 pub use error::*; // many constructors like `invalid_argument()`
 pub use http::{Extensions, Request, Response};
 

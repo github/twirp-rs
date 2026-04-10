@@ -11,6 +11,7 @@ use reqwest::header::CONTENT_TYPE;
 use url::Host;
 use url::Url;
 
+use crate::client_error::ClientError;
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
 use crate::{serialize_proto_message, Result, TwirpErrorResponse};
 
@@ -206,7 +207,7 @@ impl Client {
         &self,
         path: &str,
         req: http::Request<I>,
-    ) -> Result<http::Response<O>>
+    ) -> std::result::Result<http::Response<O>, ClientError>
     where
         I: prost::Message,
         O: prost::Message + Default,
@@ -222,27 +223,26 @@ impl Client {
             .headers(parts.headers)
             .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
             .body(serialize_proto_message(body))
-            .build()?;
+            .build()
+            .map_err(ClientError::Transport)?;
 
-        // Create and execute the middleware handlers
+        // Middleware chain still uses Result<_, TwirpErrorResponse>; convert at the boundary.
         let next = Next::new(
             &self.http_client,
             &self.inner.middlewares,
             self.inner.handlers.as_ref(),
         );
-        let response = next.run(request).await?;
+        let response = next.run(request).await.map_err(ClientError::Twirp)?;
 
-        // These have to be extracted because reading the body consumes `Response`.
         let version = response.version();
         let status = response.status();
         let headers = response.headers().clone();
         let extensions = response.extensions().clone();
         let content_type = headers.get(CONTENT_TYPE).cloned();
 
-        // TODO: Include more info in the error cases: request path, content-type, etc.
         match (status, content_type) {
             (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
-                O::decode(response.bytes().await?)
+                O::decode(response.bytes().await.map_err(ClientError::Transport)?)
                     .map(|x| {
                         let mut resp = http::Response::new(x);
                         *resp.version_mut() = version;
@@ -250,19 +250,23 @@ impl Client {
                         resp.extensions_mut().extend(extensions);
                         resp
                     })
-                    .map_err(|e| e.into())
+                    .map_err(|e| ClientError::InvalidResponse(Box::new(e)))
             }
             (status, Some(ct))
                 if (status.is_client_error() || status.is_server_error())
                     && ct.as_bytes() == CONTENT_TYPE_JSON =>
             {
-                // TODO: Should middleware response extensions and headers be included in the error case?
-                Err(serde_json::from_slice(&response.bytes().await?)?)
+                let twirp_err: TwirpErrorResponse =
+                    serde_json::from_slice(&response.bytes().await.map_err(ClientError::Transport)?)
+                        .map_err(|e| ClientError::InvalidResponse(Box::new(e)))?;
+                Err(ClientError::Twirp(twirp_err))
             }
-            (status, ct) => Err(TwirpErrorResponse::new(
-                status.into(),
-                format!("unexpected content type: {:?}", ct),
-            )),
+            (status, ct) => Err(ClientError::InvalidResponse(Box::new(
+                TwirpErrorResponse::new(
+                    status.into(),
+                    format!("unexpected content type: {:?}", ct),
+                ),
+            ))),
         }
     }
 }
