@@ -407,12 +407,20 @@ mod test {
 
     #[tokio::test]
     async fn reqwest_timeout_error_maps_to_unavailable() {
+        // Bind a listener that accepts but never responds, guaranteeing a timeout.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let _accept_thread = std::thread::spawn(move || {
+            let (_stream, _) = listener.accept().unwrap();
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        });
+
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_nanos(1))
+            .timeout(std::time::Duration::from_millis(1))
             .build()
             .unwrap();
         let err = client
-            .get("http://192.0.2.1") // RFC 5737 TEST-NET, non-routable
+            .get(format!("http://{addr}"))
             .send()
             .await
             .unwrap_err();
@@ -422,7 +430,7 @@ mod test {
 
     #[test]
     fn reqwest_builder_error_maps_to_invalid_argument() {
-        // An invalid URL scheme triggers a builder error
+        // An empty URL string triggers a builder error
         let err = reqwest::Client::builder()
             .build()
             .unwrap()
