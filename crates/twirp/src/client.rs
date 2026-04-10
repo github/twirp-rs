@@ -207,7 +207,7 @@ impl Client {
         &self,
         path: &str,
         req: http::Request<I>,
-    ) -> std::result::Result<http::Response<O>, ClientError>
+    ) -> Result<http::Response<O>, ClientError>
     where
         I: prost::Message,
         O: prost::Message + Default,
@@ -223,8 +223,7 @@ impl Client {
             .headers(parts.headers)
             .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
             .body(serialize_proto_message(body))
-            .build()
-            .map_err(ClientError::Transport)?;
+            .build()?;
 
         // Middleware chain still uses Result<_, TwirpErrorResponse>; convert at the boundary.
         let next = Next::new(
@@ -232,7 +231,7 @@ impl Client {
             &self.inner.middlewares,
             self.inner.handlers.as_ref(),
         );
-        let response = next.run(request).await.map_err(ClientError::Twirp)?;
+        let response = next.run(request).await?;
 
         let version = response.version();
         let status = response.status();
@@ -242,7 +241,7 @@ impl Client {
 
         match (status, content_type) {
             (status, Some(ct)) if status.is_success() && ct.as_bytes() == CONTENT_TYPE_PROTOBUF => {
-                O::decode(response.bytes().await.map_err(ClientError::Transport)?)
+                O::decode(response.bytes().await?)
                     .map(|x| {
                         let mut resp = http::Response::new(x);
                         *resp.version_mut() = version;
@@ -257,8 +256,7 @@ impl Client {
                     && ct.as_bytes() == CONTENT_TYPE_JSON =>
             {
                 let twirp_err: TwirpErrorResponse =
-                    serde_json::from_slice(&response.bytes().await.map_err(ClientError::Transport)?)
-                        .map_err(|e| ClientError::InvalidResponse(Box::new(e)))?;
+                    serde_json::from_slice(&response.bytes().await?)?;
                 Err(ClientError::Twirp(twirp_err))
             }
             (status, ct) => Err(ClientError::InvalidResponse(Box::new(
