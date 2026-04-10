@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2](https://github.com/github/twirp-rs/compare/twirp-v0.10.1...twirp-v0.10.2) - 2026-04-10
+
+### Other
+
+- Map reqwest errors to semantically correct Twirp error codes ([#314](https://github.com/github/twirp-rs/pull/314))
+- Allow different types on with_meta arguments ([#301](https://github.com/github/twirp-rs/pull/301))
+- Combined Dependabot PRs 2026-02-09 ([#299](https://github.com/github/twirp-rs/pull/299))
+- Combined Dependabot PRs for twirp-rs 2026-01-06 ([#291](https://github.com/github/twirp-rs/pull/291))
+- Bump http from 1.3.1 to 1.4.0 ([#276](https://github.com/github/twirp-rs/pull/276))
+- Bump hyper from 1.7.0 to 1.8.1 ([#274](https://github.com/github/twirp-rs/pull/274))
+- Bump tokio from 1.47.1 to 1.48.0 ([#267](https://github.com/github/twirp-rs/pull/267))
+
 ## [0.10.1](https://github.com/github/twirp-rs/compare/twirp-v0.10.0...twirp-v0.10.1) - 2025-10-14
 
 ### Added
