@@ -108,17 +108,29 @@ pub struct RequestId(pub String);
 // Small test twirp services (this would usually be generated with twirp-build)
 #[async_trait]
 pub trait TestApiClient {
-    async fn ping(&self, req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>, ClientError>;
-    async fn boom(&self, req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>, ClientError>;
+    async fn ping(
+        &self,
+        req: http::Request<PingRequest>,
+    ) -> Result<http::Response<PingResponse>, ClientError>;
+    async fn boom(
+        &self,
+        req: http::Request<PingRequest>,
+    ) -> Result<http::Response<PingResponse>, ClientError>;
 }
 
 #[async_trait]
 impl TestApiClient for Client {
-    async fn ping(&self, req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>, ClientError> {
+    async fn ping(
+        &self,
+        req: http::Request<PingRequest>,
+    ) -> Result<http::Response<PingResponse>, ClientError> {
         self.request("test.TestAPI/Ping", req).await
     }
 
-    async fn boom(&self, _req: http::Request<PingRequest>) -> Result<http::Response<PingResponse>, ClientError> {
+    async fn boom(
+        &self,
+        _req: http::Request<PingRequest>,
+    ) -> Result<http::Response<PingResponse>, ClientError> {
         todo!()
     }
 }
