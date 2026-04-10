@@ -164,7 +164,7 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let request_path = format!("{}/{}", service.fqn, m.proto_name);
 
             client_methods.push(parse_quote! {
-                async fn #name(&self, req: twirp::Request<#input_type>) -> Result<twirp::Response<#output_type>, twirp::ClientError> {
+                async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::ClientResult<twirp::Response<#output_type>> {
                     self.request(#request_path, req).await
                 }
             })

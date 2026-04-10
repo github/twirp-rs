@@ -207,7 +207,7 @@ impl Client {
         &self,
         path: &str,
         req: http::Request<I>,
-    ) -> Result<http::Response<O>, ClientError>
+    ) -> crate::ClientResult<http::Response<O>>
     where
         I: prost::Message,
         O: prost::Message + Default,

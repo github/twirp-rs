@@ -32,6 +32,9 @@ pub use axum::Router;
 
 pub type Result<T, E = TwirpErrorResponse> = std::result::Result<T, E>;
 
+/// Result type for Twirp client calls, using [`ClientError`] as the error type.
+pub type ClientResult<T> = std::result::Result<T, ClientError>;
+
 pub(crate) fn serialize_proto_message<T>(m: T) -> Vec<u8>
 where
     T: prost::Message,
