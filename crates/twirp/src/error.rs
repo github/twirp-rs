@@ -265,14 +265,15 @@ impl From<serde_json::Error> for TwirpErrorResponse {
 impl From<reqwest::Error> for TwirpErrorResponse {
     fn from(e: reqwest::Error) -> Self {
         let msg = e.to_string();
-        if e.is_builder() {
-            invalid_argument(msg).with_rust_error(e)
+        let resp = if e.is_builder() {
+            invalid_argument(msg)
         } else if e.is_redirect() || e.is_body() || e.is_decode() {
-            internal(msg).with_rust_error(e)
+            internal(msg)
         } else {
             // connect, timeout, request, and anything else — treat as transient
-            unavailable(msg).with_rust_error(e)
-        }
+            unavailable(msg)
+        };
+        resp.with_rust_error(e)
     }
 }
 
