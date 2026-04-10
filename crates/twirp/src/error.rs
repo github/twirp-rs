@@ -258,10 +258,21 @@ impl From<serde_json::Error> for TwirpErrorResponse {
     }
 }
 
-// unable to build the request
+// Map reqwest errors to semantically appropriate Twirp error codes.
+// Transport failures (connect, timeout) → Unavailable (retryable).
+// Request-building errors → InvalidArgument (caller's fault).
+// Response-parsing errors → Internal (unexpected server behavior).
 impl From<reqwest::Error> for TwirpErrorResponse {
     fn from(e: reqwest::Error) -> Self {
-        invalid_argument(e.to_string()).with_rust_error(e)
+        let msg = e.to_string();
+        if e.is_builder() {
+            invalid_argument(msg).with_rust_error(e)
+        } else if e.is_redirect() || e.is_body() || e.is_decode() {
+            internal(msg).with_rust_error(e)
+        } else {
+            // connect, timeout, request, and anything else — treat as transient
+            unavailable(msg).with_rust_error(e)
+        }
     }
 }
 
@@ -391,6 +402,34 @@ mod test {
 
         let result = serde_json::from_str(&result).unwrap();
         assert_eq!(response, result);
+    }
+
+    #[tokio::test]
+    async fn reqwest_timeout_error_maps_to_unavailable() {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_nanos(1))
+            .build()
+            .unwrap();
+        let err = client
+            .get("http://192.0.2.1") // RFC 5737 TEST-NET, non-routable
+            .send()
+            .await
+            .unwrap_err();
+        let twirp_err: TwirpErrorResponse = err.into();
+        assert_eq!(twirp_err.code, TwirpErrorCode::Unavailable);
+    }
+
+    #[test]
+    fn reqwest_builder_error_maps_to_invalid_argument() {
+        // An invalid URL scheme triggers a builder error
+        let err = reqwest::Client::builder()
+            .build()
+            .unwrap()
+            .get("")
+            .build()
+            .unwrap_err();
+        let twirp_err: TwirpErrorResponse = err.into();
+        assert_eq!(twirp_err.code, TwirpErrorCode::InvalidArgument);
     }
 
     #[test]
