@@ -11,7 +11,7 @@ categories = [
     "asynchronous",
 ]
 repository = "https://github.com/github/twirp-rs"
-license-file = "./LICENSE"
+license = "MIT"
 
 [dependencies]
 prost-build = "0.14"
