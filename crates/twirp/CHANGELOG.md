@@ -55,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - It is possible to set custom headers on requests (client side) and it's possible for server handlers to read request headers and set custom response headers.
 - The same ☝🏻 is true for extensions to allow interactivity with middleware.
 - All the above is accomplished by using `http::request::Request<In>` and `http::response::Response<Out>` where `In` and `Out` are the individual rpc message types.
-- We have unifyied and simplified the error types. There is now just `TwirpErrorResponse` which models the [twirp error response spec](https://twitchtv.github.io/twirp/docs/spec_v7.html#error-codes).
+- We have unified and simplified the error types. There is now just `TwirpErrorResponse` which models the [twirp error response spec](https://twitchtv.github.io/twirp/docs/spec_v7.html#error-codes).
 
 
 #### Breaking: Generate service fqn ([#221](https://github.com/github/twirp-rs/pull/221))
