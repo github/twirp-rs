@@ -65,25 +65,26 @@ where
 }
 
 /// Decode a `reqwest::Request` into a `http::Request<I>`.
-pub async fn decode_request<I>(mut req: reqwest::Request) -> Result<http::Request<I>>
+pub async fn decode_request<I>(req: reqwest::Request) -> Result<http::Request<I>>
 where
     I: prost::Message + Default,
 {
-    let url = req.url().clone();
-    let headers = req.headers().clone();
-    let body = std::mem::take(req.body_mut())
-        .ok_or_else(|| malformed("failed to read the request body"))?
+    let http_req: http::Request<reqwest::Body> = req
+        .try_into()
+        .map_err(|e| malformed(format!("failed to convert request: {e}")))?;
+    let (parts, body) = http_req.into_parts();
+    let bytes = body
         .collect()
-        .await?
+        .await
+        .map_err(|e| malformed(format!("failed to read the request body: {e}")))?
         .to_bytes();
-    let data = I::decode(body).map_err(|e| malformed(format!("failed to decode request: {e}")))?;
-    let mut req = Request::builder().method("POST").uri(url.to_string());
-    req.headers_mut()
-        .expect("failed to get headers")
-        .extend(headers);
-    let req = req
-        .body(data)
-        .map_err(|e| malformed(format!("failed to build the request: {e}")))?;
+    let data = I::decode(bytes).map_err(|e| malformed(format!("failed to decode request: {e}")))?;
+    let mut req = http::Request::new(data);
+    *req.method_mut() = parts.method;
+    *req.uri_mut() = parts.uri;
+    *req.version_mut() = parts.version;
+    *req.headers_mut() = parts.headers;
+    *req.extensions_mut() = parts.extensions;
     Ok(req)
 }
 

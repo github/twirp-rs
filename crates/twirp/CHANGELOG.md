@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ClientBuilder::with_extension` attaches a typed extension that is inserted onto every
+  outbound request before middleware and handlers run. Per-call extensions set on the
+  inbound `http::Request` take precedence.
+
+### Fixed
+
+- `Client::request` now propagates per-call request extensions from the inbound
+  `http::Request` through to the `reqwest::Request`, and `details::decode_request`
+  preserves them when decoding back into `http::Request`, so extensions are visible to
+  `DirectHandler`-routed API trait methods.
+
 ## [0.11.0](https://github.com/github/twirp-rs/compare/twirp-v0.10.1...twirp-v0.11.0) - 2026-04-10
 
 ### Other
