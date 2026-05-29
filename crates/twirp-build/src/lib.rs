@@ -101,11 +101,11 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let output_type = &m.output_type;
 
             trait_methods.push(parse_quote! {
-                async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::Result<twirp::Response<#output_type>>;
+                async fn #name(&self, req: twirp::Request<#input_type>) -> std::result::Result<twirp::Response<#output_type>, E>;
             });
 
             proxy_methods.push(parse_quote! {
-                async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::Result<twirp::Response<#output_type>> {
+                async fn #name(&self, req: twirp::Request<#input_type>) -> std::result::Result<twirp::Response<#output_type>, E> {
                     T::#name(&*self, req).await
                 }
             });
@@ -114,15 +114,16 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
         let rpc_trait_name = &service.rpc_trait_name;
         let server_trait: syn::ItemTrait = parse_quote! {
             #[twirp::async_trait::async_trait]
-            pub trait #rpc_trait_name: Send + Sync {
+            pub trait #rpc_trait_name<E = twirp::TwirpErrorResponse>: Send + Sync {
                 #(#trait_methods)*
             }
         };
         let server_trait_impl: syn::ItemImpl = parse_quote! {
             #[twirp::async_trait::async_trait]
-            impl<T> #rpc_trait_name for std::sync::Arc<T>
+            impl<T, E> #rpc_trait_name<E> for std::sync::Arc<T>
             where
-                T: #rpc_trait_name + Sync + Send
+                T: #rpc_trait_name<E> + Sync + Send,
+                E: Send + 'static,
             {
                 #(#proxy_methods)*
             }
@@ -163,14 +164,14 @@ impl prost_build::ServiceGenerator for ServiceGenerator {
             let request_path = format!("{}/{}", service.fqn, m.proto_name);
 
             client_methods.push(parse_quote! {
-                async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::Result<twirp::Response<#output_type>> {
+                async fn #name(&self, req: twirp::Request<#input_type>) -> twirp::Result<twirp::Response<#output_type>, twirp::ClientError> {
                     self.request(#request_path, req).await
                 }
             })
         }
         let client_trait: syn::ItemImpl = parse_quote! {
             #[twirp::async_trait::async_trait]
-            impl #rpc_trait_name for twirp::client::Client {
+            impl #rpc_trait_name<twirp::ClientError> for twirp::client::Client {
                 #(#client_methods)*
             }
         };
