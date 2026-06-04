@@ -11,6 +11,7 @@ use reqwest::header::CONTENT_TYPE;
 use url::Host;
 use url::Url;
 
+use crate::client_error::ClientError;
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
 use crate::{serialize_proto_message, Result, TwirpErrorResponse};
 
@@ -206,7 +207,7 @@ impl Client {
         &self,
         path: &str,
         req: http::Request<I>,
-    ) -> Result<http::Response<O>>
+    ) -> crate::Result<http::Response<O>, ClientError>
     where
         I: prost::Message,
         O: prost::Message + Default,
@@ -224,7 +225,7 @@ impl Client {
             .body(serialize_proto_message(body))
             .build()?;
 
-        // Create and execute the middleware handlers
+        // Middleware chain still uses Result<_, TwirpErrorResponse>; convert at the boundary.
         let next = Next::new(
             &self.http_client,
             &self.inner.middlewares,
@@ -250,19 +251,23 @@ impl Client {
                         resp.extensions_mut().extend(extensions);
                         resp
                     })
-                    .map_err(|e| e.into())
+                    .map_err(|e| ClientError::InvalidResponse(Box::new(e)))
             }
             (status, Some(ct))
                 if (status.is_client_error() || status.is_server_error())
                     && ct.as_bytes() == CONTENT_TYPE_JSON =>
             {
                 // TODO: Should middleware response extensions and headers be included in the error case?
-                Err(serde_json::from_slice(&response.bytes().await?)?)
+                let twirp_err: TwirpErrorResponse =
+                    serde_json::from_slice(&response.bytes().await?)?;
+                Err(ClientError::Twirp(twirp_err))
             }
-            (status, ct) => Err(TwirpErrorResponse::new(
-                status.into(),
-                format!("unexpected content type: {:?}", ct),
-            )),
+            (status, ct) => Err(ClientError::InvalidResponse(Box::new(
+                TwirpErrorResponse::new(
+                    status.into(),
+                    format!("unexpected content type: {:?}", ct),
+                ),
+            ))),
         }
     }
 }
