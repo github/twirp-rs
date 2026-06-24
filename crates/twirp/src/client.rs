@@ -5,14 +5,16 @@ use std::vec;
 use async_trait::async_trait;
 use http::header::Entry;
 use http::header::IntoHeaderName;
+use http::Extensions;
 use http::HeaderMap;
 use http::HeaderValue;
+use http::Method;
 use reqwest::header::CONTENT_TYPE;
 use url::Host;
 use url::Url;
 
 use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
-use crate::{serialize_proto_message, Result, TwirpErrorResponse};
+use crate::{malformed, serialize_proto_message, Result, TwirpErrorResponse};
 
 /// Builder to easily create twirp clients.
 pub struct ClientBuilder {
@@ -20,6 +22,7 @@ pub struct ClientBuilder {
     http_client: Option<reqwest::Client>,
     handlers: Option<RequestHandlers>,
     middleware: Vec<Box<dyn Middleware>>,
+    extensions: http::Extensions,
 }
 
 impl ClientBuilder {
@@ -30,6 +33,7 @@ impl ClientBuilder {
             http_client: None,
             middleware: vec![],
             handlers: None,
+            extensions: Extensions::new(),
         }
     }
 
@@ -44,6 +48,7 @@ impl ClientBuilder {
             http_client: None,
             middleware: vec![],
             handlers: Some(RequestHandlers::new()),
+            extensions: Extensions::new(),
         }
     }
 
@@ -100,13 +105,46 @@ impl ClientBuilder {
         self
     }
 
+    /// Attach a typed extension that will be inserted onto every outbound request before it
+    /// reaches middleware and handlers. Per-call extensions set on the inbound `http::Request`
+    /// take precedence and override these values. Calling this with a value of the same type
+    /// replaces the previous value.
+    pub fn with_extension<T>(mut self, value: T) -> Self
+    where
+        T: Clone + Send + Sync + 'static,
+    {
+        self.extensions.insert(value);
+        self
+    }
+
     /// Creates a `twirp::Client`.
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn build(self) -> Client {
         let http_client = self.http_client.unwrap_or_default();
-        Client::new(self.base_url, http_client, self.middleware, self.handlers)
+        Client {
+            http_client,
+            inner: Arc::new(ClientRef {
+                base_url: normalize_base_url(self.base_url),
+                middlewares: self.middleware,
+                handlers: self.handlers,
+                extensions: self.extensions,
+            }),
+            host: None,
+        }
+    }
+}
+
+fn normalize_base_url(base_url: Url) -> Url {
+    if base_url.path().ends_with('/') {
+        base_url
+    } else {
+        let mut base_url = base_url;
+        let mut path = base_url.path().to_string();
+        path.push('/');
+        base_url.set_path(&path);
+        base_url
     }
 }
 
@@ -126,6 +164,7 @@ struct ClientRef {
     base_url: Url,
     middlewares: Vec<Box<dyn Middleware>>,
     handlers: Option<RequestHandlers>,
+    extensions: Extensions,
 }
 
 impl std::fmt::Debug for Client {
@@ -143,6 +182,7 @@ impl std::fmt::Debug for Client {
                     .map(|x| x.len())
                     .unwrap_or_default(),
             )
+            .field("extensions", &self.inner.extensions.len())
             .finish()
     }
 }
@@ -158,21 +198,13 @@ impl Client {
         middlewares: Vec<Box<dyn Middleware>>,
         handlers: Option<RequestHandlers>,
     ) -> Self {
-        let base_url = if base_url.path().ends_with('/') {
-            base_url
-        } else {
-            let mut base_url = base_url;
-            let mut path = base_url.path().to_string();
-            path.push('/');
-            base_url.set_path(&path);
-            base_url
-        };
         Client {
             http_client,
             inner: Arc::new(ClientRef {
-                base_url,
+                base_url: normalize_base_url(base_url),
                 middlewares,
                 handlers,
+                extensions: http::Extensions::new(),
             }),
             host: None,
         }
@@ -216,13 +248,25 @@ impl Client {
             url.set_host(Some(host))?
         };
         let (parts, body) = req.into_parts();
-        let request = self
-            .http_client
-            .post(url)
-            .headers(parts.headers)
-            .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-            .body(serialize_proto_message(body))
-            .build()?;
+        // Build as `http::Request<reqwest::Body>` so that extensions propagate through
+        // the public `TryFrom<http::Request<T>> for reqwest::Request` impl (the inherent
+        // `extensions_mut` on `reqwest::Request` is `pub(crate)`).
+        let mut http_req = http::Request::builder()
+            .method(Method::POST)
+            .uri(url.to_string())
+            .body(reqwest::Body::from(serialize_proto_message(body)))
+            .map_err(|e| malformed(format!("failed to build the request: {e}")))?;
+        *http_req.headers_mut() = parts.headers;
+        http_req.headers_mut().insert(
+            CONTENT_TYPE,
+            HeaderValue::from_bytes(CONTENT_TYPE_PROTOBUF)
+                .expect("CONTENT_TYPE_PROTOBUF is always a valid header value"),
+        );
+        // Apply per-client extensions first, then let per-call extensions override.
+        let request_extensions = http_req.extensions_mut();
+        request_extensions.extend(self.inner.extensions.clone());
+        request_extensions.extend(parts.extensions);
+        let request = reqwest::Request::try_from(http_req)?;
 
         // Create and execute the middleware handlers
         let next = Next::new(
@@ -463,5 +507,77 @@ mod tests {
         let data = resp.into_body();
         assert_eq!(data.name, "hi");
         h.abort()
+    }
+
+    struct RecordingHandler {
+        observed_request_id: Arc<std::sync::Mutex<Option<RequestId>>>,
+    }
+
+    #[async_trait]
+    impl DirectHandler for RecordingHandler {
+        fn service(&self) -> &str {
+            "test.TestAPI"
+        }
+
+        async fn handle(&self, _method: &str, req: Request) -> Result<Response> {
+            let decoded: http::Request<PingRequest> = crate::details::decode_request(req).await?;
+            *self.observed_request_id.lock().unwrap() =
+                decoded.extensions().get::<RequestId>().cloned();
+            let body = serialize_proto_message(PingResponse {
+                name: "pong".to_string(),
+            });
+            let response = http::Response::builder()
+                .status(200)
+                .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
+                .body(body)
+                .expect("valid response");
+            Ok(Response::from(response))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_with_extension_propagates_to_handler() {
+        let observed = Arc::new(std::sync::Mutex::new(None));
+        let client = ClientBuilder::direct()
+            .with_handler(RecordingHandler {
+                observed_request_id: observed.clone(),
+            })
+            .with_extension(RequestId("req-from-builder".to_string()))
+            .build();
+
+        let resp = client
+            .ping(http::Request::new(PingRequest {
+                name: "hi".to_string(),
+            }))
+            .await
+            .expect("request succeeds");
+        assert_eq!(resp.into_body().name, "pong");
+        assert_eq!(
+            observed.lock().unwrap().clone(),
+            Some(RequestId("req-from-builder".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_per_call_extension_overrides_builder() {
+        let observed = Arc::new(std::sync::Mutex::new(None));
+        let client = ClientBuilder::direct()
+            .with_handler(RecordingHandler {
+                observed_request_id: observed.clone(),
+            })
+            .with_extension(RequestId("builder".to_string()))
+            .build();
+
+        let mut req = http::Request::new(PingRequest {
+            name: "hi".to_string(),
+        });
+        req.extensions_mut()
+            .insert(RequestId("per-call".to_string()));
+        let resp = client.ping(req).await.expect("request succeeds");
+        assert_eq!(resp.into_body().name, "pong");
+        assert_eq!(
+            observed.lock().unwrap().clone(),
+            Some(RequestId("per-call".to_string()))
+        );
     }
 }
