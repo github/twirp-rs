@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/github/twirp-rs/compare/twirp-v0.11.0...twirp-v0.11.1) - 2026-07-15
+
+### Other
+
+- Make client kind explicit ([#335](https://github.com/github/twirp-rs/pull/335))
+- Bump hyper from 1.10.0 to 1.10.1 ([#327](https://github.com/github/twirp-rs/pull/327))
+- Combined Dependabot PRs 2026-05-02 ([#322](https://github.com/github/twirp-rs/pull/322))
+- Change license metadata ([#318](https://github.com/github/twirp-rs/pull/318))
+
 ## [0.11.0](https://github.com/github/twirp-rs/compare/twirp-v0.10.1...twirp-v0.11.0) - 2026-04-10
 
 ### Other

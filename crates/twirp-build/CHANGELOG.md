@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1](https://github.com/github/twirp-rs/compare/twirp-build-v0.10.0...twirp-build-v0.10.1) - 2026-07-15
+
+### Other
+
+- Change license metadata ([#318](https://github.com/github/twirp-rs/pull/318))
+
 ## [0.10.0](https://github.com/github/twirp-rs/compare/twirp-build-v0.9.0...twirp-build-v0.9.1) - 2025-10-13
 
 ### Changed
