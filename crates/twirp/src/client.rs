@@ -15,35 +15,43 @@ use crate::headers::{CONTENT_TYPE_JSON, CONTENT_TYPE_PROTOBUF};
 use crate::{serialize_proto_message, Result, TwirpErrorResponse};
 
 /// Builder to easily create twirp clients.
-pub struct ClientBuilder {
+///
+/// HTTP and direct builders expose only the methods supported by their client mode.
+///
+/// ```compile_fail
+/// twirp::ClientBuilder::direct().with_http_client(twirp::reqwest::Client::new());
+/// ```
+///
+/// ```compile_fail
+/// # use twirp::reqwest::header::HeaderValue;
+/// # use twirp::url::Url;
+/// let url = Url::parse("http://localhost/twirp/").unwrap();
+/// twirp::ClientBuilder::new(url)
+///     .with_default_header("x-request-id", HeaderValue::from_static("example"));
+/// ```
+pub struct ClientBuilder<T = Http> {
     base_url: Url,
     http_client: Option<reqwest::Client>,
-    handlers: Option<RequestHandlers>,
+    handlers: RequestHandlers,
     middleware: Vec<Box<dyn Middleware>>,
+    _mode: T,
 }
 
-impl ClientBuilder {
+#[doc(hidden)]
+pub struct Http;
+
+#[doc(hidden)]
+pub struct Direct;
+
+impl ClientBuilder<Http> {
     /// Creates a `twirp::ClientBuilder` with a base URL.
     pub fn new(base_url: Url) -> Self {
         Self {
             base_url,
             http_client: None,
             middleware: vec![],
-            handlers: None,
-        }
-    }
-
-    const DEFAULT_HOST: &'static str = "localhost";
-
-    /// Creates a `twirp::ClientBuilder` suitable for registering request handlers instead of making http requests.
-    /// NOTE: uses a default base URL and HTTP client.
-    pub fn direct() -> Self {
-        Self {
-            base_url: Url::parse(&format!("http://{}/", Self::DEFAULT_HOST))
-                .expect("must be a valid URL"),
-            http_client: None,
-            middleware: vec![],
-            handlers: Some(RequestHandlers::new()),
+            handlers: RequestHandlers::new(),
+            _mode: Http,
         }
     }
 
@@ -52,6 +60,22 @@ impl ClientBuilder {
         self.http_client = Some(http_client);
         self
     }
+
+    /// Creates a `twirp::Client`.
+    ///
+    /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
+    /// you create one and **reuse** it.
+    pub fn build(self) -> Client {
+        Client::from_kind(
+            self.base_url,
+            ClientKind::Http(self.http_client.unwrap_or_default()),
+            self.middleware,
+        )
+    }
+}
+
+impl<T> ClientBuilder<T> {
+    const DEFAULT_HOST: &'static str = "localhost";
 
     /// Add middleware to the client that will be called on each request.
     /// Middlewares are invoked in the order they are added as part of the
@@ -63,27 +87,33 @@ impl ClientBuilder {
         self.middleware.push(Box::new(middleware));
         self
     }
+}
+
+impl ClientBuilder<Direct> {
+    /// Creates a `twirp::ClientBuilder` suitable for registering request handlers instead of making HTTP requests.
+    pub fn direct() -> Self {
+        Self {
+            base_url: Url::parse(&format!("http://{}/", Self::DEFAULT_HOST))
+                .expect("must be a valid URL"),
+            http_client: None,
+            middleware: vec![],
+            handlers: RequestHandlers::new(),
+            _mode: Direct,
+        }
+    }
 
     /// Add a handler for a service using the default host.
-    ///
-    /// Warning: If you register `DirectHandler`s like this, they will be called instead of making HTTP requests.
     pub fn with_handler<M: DirectHandler + 'static>(self, handler: M) -> Self {
         self.with_handler_for_host(Self::DEFAULT_HOST, handler)
     }
 
     /// Add a handler for a service for a specific host.
-    ///
-    /// Warning: If you register `DirectHandler`s like this, they will be called instead of making HTTP requests.
     pub fn with_handler_for_host<M: DirectHandler + 'static>(
         mut self,
         host: &str,
         handler: M,
     ) -> Self {
-        if let Some(handlers) = &mut self.handlers {
-            handlers.add(host, handler);
-        } else {
-            panic!("you must use `ClientBuilder::direct()` to register handlers");
-        }
+        self.handlers.add(host, handler);
         self
     }
 
@@ -92,24 +122,17 @@ impl ClientBuilder {
     where
         K: IntoHeaderName,
     {
-        if let Some(handlers) = &mut self.handlers {
-            handlers.default_headers.insert(key, value);
-        } else {
-            panic!("you must use `ClientBuilder::direct()` to register handler default headers");
-        }
+        self.handlers.default_headers.insert(key, value);
         self
     }
 
     /// Creates a `twirp::Client`.
-    ///
-    /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
-    /// you create one and **reuse** it.
     pub fn build(self) -> Client {
-        let client = match self.handlers {
-            Some(handlers) => ClientKind::Direct(handlers),
-            None => ClientKind::Http(self.http_client.unwrap_or_default()),
-        };
-        Client::from_kind(self.base_url, client, self.middleware)
+        Client::from_kind(
+            self.base_url,
+            ClientKind::Direct(self.handlers),
+            self.middleware,
+        )
     }
 }
 
