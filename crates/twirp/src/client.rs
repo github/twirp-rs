@@ -105,8 +105,11 @@ impl ClientBuilder {
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn build(self) -> Client {
-        let http_client = self.http_client.unwrap_or_default();
-        Client::new(self.base_url, http_client, self.middleware, self.handlers)
+        let client = match self.handlers {
+            Some(handlers) => ClientKind::Direct(handlers),
+            None => ClientKind::Http(self.http_client.unwrap_or_default()),
+        };
+        Client::from_kind(self.base_url, client, self.middleware)
     }
 }
 
@@ -117,31 +120,43 @@ impl ClientBuilder {
 /// because it already uses an [`Arc`] internally.
 #[derive(Clone)]
 pub struct Client {
-    http_client: reqwest::Client,
     inner: Arc<ClientRef>,
     host: Option<String>,
 }
 
+// Contains references to data that is shared across all cloned copies of a client. The `Client` `host` field
+// is deliberately not part of this data in order to support cloning a client and changing only the host.
 struct ClientRef {
     base_url: Url,
     middlewares: Vec<Box<dyn Middleware>>,
-    handlers: Option<RequestHandlers>,
+    client: ClientKind,
+}
+
+enum ClientKind {
+    Direct(RequestHandlers),
+    Http(reqwest::Client),
 }
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_url", &self.inner.base_url)
-            .field("client", &self.http_client)
+        let mut debug = f.debug_struct("Client");
+        debug.field("base_url", &self.inner.base_url);
+        match &self.inner.client {
+            ClientKind::Direct(_) => {
+                debug.field("client", &"direct");
+            }
+            ClientKind::Http(client) => {
+                debug.field("client", client);
+            }
+        }
+        debug
             .field("middlewares", &self.inner.middlewares.len())
             .field(
                 "handlers",
-                &self
-                    .inner
-                    .handlers
-                    .as_ref()
-                    .map(|x| x.len())
-                    .unwrap_or_default(),
+                &match &self.inner.client {
+                    ClientKind::Direct(handlers) => handlers.len(),
+                    ClientKind::Http(_) => 0,
+                },
             )
             .finish()
     }
@@ -158,6 +173,14 @@ impl Client {
         middlewares: Vec<Box<dyn Middleware>>,
         handlers: Option<RequestHandlers>,
     ) -> Self {
+        let client = match handlers {
+            Some(handlers) => ClientKind::Direct(handlers),
+            None => ClientKind::Http(http_client),
+        };
+        Self::from_kind(base_url, client, middlewares)
+    }
+
+    fn from_kind(base_url: Url, client: ClientKind, middlewares: Vec<Box<dyn Middleware>>) -> Self {
         let base_url = if base_url.path().ends_with('/') {
             base_url
         } else {
@@ -168,11 +191,10 @@ impl Client {
             base_url
         };
         Client {
-            http_client,
             inner: Arc::new(ClientRef {
                 base_url,
                 middlewares,
-                handlers,
+                client,
             }),
             host: None,
         }
@@ -195,7 +217,6 @@ impl Client {
     /// one, but with a different host in the base URL.
     pub fn with_host(&self, host: &str) -> Self {
         Self {
-            http_client: self.http_client.clone(),
             inner: self.inner.clone(),
             host: Some(host.to_string()),
         }
@@ -216,20 +237,29 @@ impl Client {
             url.set_host(Some(host))?
         };
         let (parts, body) = req.into_parts();
-        let request = self
-            .http_client
-            .post(url)
-            .headers(parts.headers)
-            .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
-            .body(serialize_proto_message(body))
-            .build()?;
+        let body = serialize_proto_message(body);
+        let request = match &self.inner.client {
+            ClientKind::Direct(_) => {
+                let mut request = reqwest::Request::new(reqwest::Method::POST, url);
+                *request.headers_mut() = parts.headers;
+                request.headers_mut().append(
+                    CONTENT_TYPE,
+                    HeaderValue::from_bytes(CONTENT_TYPE_PROTOBUF)
+                        .expect("protobuf content type must be valid"),
+                );
+                *request.body_mut() = Some(body.into());
+                request
+            }
+            ClientKind::Http(client) => client
+                .post(url)
+                .headers(parts.headers)
+                .header(CONTENT_TYPE, CONTENT_TYPE_PROTOBUF)
+                .body(body)
+                .build()?,
+        };
 
         // Create and execute the middleware handlers
-        let next = Next::new(
-            &self.http_client,
-            &self.inner.middlewares,
-            self.inner.handlers.as_ref(),
-        );
+        let next = Next::new(&self.inner.client, &self.inner.middlewares);
         let response = next.run(request).await?;
 
         // These have to be extracted because reading the body consumes `Response`.
@@ -290,23 +320,17 @@ where
 
 #[derive(Clone)]
 pub struct Next<'a> {
-    client: &'a reqwest::Client,
+    client: &'a ClientKind,
     middlewares: &'a [Box<dyn Middleware>],
-    handlers: Option<&'a RequestHandlers>,
 }
 
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
 
 impl<'a> Next<'a> {
-    pub(crate) fn new(
-        client: &'a reqwest::Client,
-        middlewares: &'a [Box<dyn Middleware>],
-        handlers: Option<&'a RequestHandlers>,
-    ) -> Self {
+    fn new(client: &'a ClientKind, middlewares: &'a [Box<dyn Middleware>]) -> Self {
         Next {
             client,
             middlewares,
-            handlers,
         }
     }
 
@@ -315,12 +339,13 @@ impl<'a> Next<'a> {
             // Run any middleware
             self.middlewares = rest;
             Box::pin(current.handle(req, self))
-        } else if let Some(handlers) = self.handlers {
-            // If we've got a client with direct request handlers: use those
-            Box::pin(async move { execute_handlers(req, handlers).await })
         } else {
-            // Otherwise: execute the actual http request here
-            Box::pin(async move { Ok(self.client.execute(req).await?) })
+            match self.client {
+                ClientKind::Direct(handlers) => {
+                    Box::pin(async move { execute_handlers(req, handlers).await })
+                }
+                ClientKind::Http(client) => Box::pin(async move { Ok(client.execute(req).await?) }),
+            }
         }
     }
 }
@@ -430,6 +455,16 @@ mod tests {
             Client::from_base_url(url).base_url().to_string(),
             "http://localhost:3001/twirp/"
         );
+    }
+
+    #[test]
+    fn test_client_builder_modes() {
+        let direct = ClientBuilder::direct().build();
+        assert!(matches!(direct.inner.client, ClientKind::Direct(_)));
+
+        let base_url = Url::parse("http://localhost:3001/twirp/").unwrap();
+        let http = ClientBuilder::new(base_url).build();
+        assert!(matches!(http.inner.client, ClientKind::Http(_)));
     }
 
     #[tokio::test]
