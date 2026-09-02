@@ -27,7 +27,7 @@ push = load_script("push-dependency-update")
 
 
 class ConflictTests(unittest.TestCase):
-    def test_bot_draft_with_approval_is_replaceable(self):
+    def test_bot_draft_with_approval_blocks_replacement(self):
         pull_requests = [
             {
                 "number": 7,
@@ -36,11 +36,19 @@ class ConflictTests(unittest.TestCase):
                 "author": {"login": "github-actions[bot]"},
                 "isDraft": True,
                 "isCrossRepository": False,
-                "reviewDecision": "APPROVED",
+                "latestReviews": [
+                    {"author": {"login": "reviewer"}, "state": "APPROVED"}
+                ],
             }
         ]
 
-        self.assertEqual(conflicts.conflicts("cargo", pull_requests), [])
+        self.assertEqual(
+            conflicts.conflicts("cargo", pull_requests),
+            [
+                "#7 uses reserved branch automation/cargo-dependencies "
+                "and has an approval; refusing to replace its reviewed diff"
+            ],
+        )
 
     def test_non_draft_reserved_pull_request_blocks_replacement(self):
         pull_requests = [
@@ -79,7 +87,7 @@ class ReplacementTests(unittest.TestCase):
             mock.patch.object(push, "run_conflict_check"),
             mock.patch.object(push, "push_replacement"),
             mock.patch.object(push, "rollback_replacement"),
-            mock.patch.object(push, "dismiss_review"),
+            mock.patch.object(push, "close_pull_request"),
         ]
         (
             self.reserved_pull_request,
@@ -88,26 +96,38 @@ class ReplacementTests(unittest.TestCase):
             self.run_conflict_check,
             self.push_replacement,
             self.rollback_replacement,
-            self.dismiss_review,
+            self.close_pull_request,
         ) = [patch.start() for patch in self.patches]
         self.addCleanup(lambda: [patch.stop() for patch in reversed(self.patches)])
 
-    def test_dismisses_only_approvals_for_replaced_revision(self):
+    def test_closes_old_pr_and_rechecks_before_push(self):
         calls = []
         self.run_conflict_check.side_effect = lambda *_: calls.append("conflict")
+        self.close_pull_request.side_effect = lambda *_: calls.append("close")
         self.push_replacement.side_effect = lambda *_: calls.append("push")
-        old_approval = {"id": 11, "state": "APPROVED", "commit_id": "old"}
-        new_approval = {"id": 12, "state": "APPROVED", "commit_id": "new"}
-        dismissed = {"id": 11, "state": "DISMISSED", "commit_id": "old"}
-        with mock.patch.object(
-            push,
-            "submitted_reviews",
-            side_effect=[
-                [old_approval],
-                [old_approval, new_approval],
-                [dismissed, new_approval],
-            ],
-        ):
+        self.reserved_pull_request.side_effect = [self.pull_request, None]
+
+        push.replace_dependency_branch(
+            "cargo",
+            "automation/cargo-dependencies",
+            "github/twirp-rs",
+            "checker",
+        )
+
+        self.assertEqual(
+            self.run_conflict_check.call_args_list,
+            [mock.call("checker", "cargo"), mock.call("checker", "cargo")],
+        )
+        self.close_pull_request.assert_called_once_with("github/twirp-rs", 7)
+        self.push_replacement.assert_called_once_with(
+            "automation/cargo-dependencies", "old"
+        )
+        self.rollback_replacement.assert_not_called()
+        self.assertEqual(calls, ["conflict", "close", "conflict", "push"])
+
+    def test_close_failure_prevents_push(self):
+        self.close_pull_request.side_effect = RuntimeError("not permitted")
+        with self.assertRaisesRegex(RuntimeError, "not permitted"):
             push.replace_dependency_branch(
                 "cargo",
                 "automation/cargo-dependencies",
@@ -115,56 +135,25 @@ class ReplacementTests(unittest.TestCase):
                 "checker",
             )
 
-        self.run_conflict_check.assert_called_once_with("checker", "cargo")
-        self.push_replacement.assert_called_once_with(
-            "automation/cargo-dependencies", "old"
-        )
-        self.dismiss_review.assert_called_once_with("github/twirp-rs", 7, 11)
+        self.push_replacement.assert_not_called()
         self.rollback_replacement.assert_not_called()
-        self.assertEqual(calls, ["conflict", "push"])
 
-    def test_dismissal_failure_rolls_back_replacement(self):
-        approval = {"id": 11, "state": "APPROVED", "commit_id": "old"}
-        with mock.patch.object(
-            push,
-            "submitted_reviews",
-            side_effect=[[approval], [approval]],
-        ):
-            self.dismiss_review.side_effect = RuntimeError("not permitted")
-            with self.assertRaisesRegex(
-                RuntimeError, "restored .* to its previous state"
-            ):
-                push.replace_dependency_branch(
-                    "cargo",
-                    "automation/cargo-dependencies",
-                    "github/twirp-rs",
-                    "checker",
-                )
+    def test_second_conflict_check_prevents_push(self):
+        self.run_conflict_check.side_effect = [
+            None,
+            RuntimeError("conflicting PR appeared"),
+        ]
+        with self.assertRaisesRegex(RuntimeError, "conflicting PR appeared"):
+            push.replace_dependency_branch(
+                "cargo",
+                "automation/cargo-dependencies",
+                "github/twirp-rs",
+                "checker",
+            )
 
-        self.rollback_replacement.assert_called_once_with(
-            "automation/cargo-dependencies", "old", "new"
-        )
-
-    def test_remaining_stale_approval_rolls_back_replacement(self):
-        approval = {"id": 11, "state": "APPROVED", "commit_id": "old"}
-        with mock.patch.object(
-            push,
-            "submitted_reviews",
-            side_effect=[[approval], [approval], [approval]],
-        ):
-            with self.assertRaisesRegex(
-                RuntimeError, "Stale approvals remain after replacement"
-            ):
-                push.replace_dependency_branch(
-                    "cargo",
-                    "automation/cargo-dependencies",
-                    "github/twirp-rs",
-                    "checker",
-                )
-
-        self.rollback_replacement.assert_called_once_with(
-            "automation/cargo-dependencies", "old", "new"
-        )
+        self.close_pull_request.assert_called_once_with("github/twirp-rs", 7)
+        self.push_replacement.assert_not_called()
+        self.rollback_replacement.assert_not_called()
 
 
 class WorkflowTests(unittest.TestCase):
@@ -177,7 +166,10 @@ class WorkflowTests(unittest.TestCase):
     def test_dispatch_checkout_is_pinned_to_current_main(self):
         generate_checkout = self.workflow.index("- name: Checkout repository")
         record_main = self.workflow.index("- name: Record main revision")
-        self.assertIn("ref: main", self.workflow[generate_checkout:record_main])
+        self.assertIn(
+            "ref: refs/heads/main",
+            self.workflow[generate_checkout:record_main],
+        )
         self.assertIn(
             "ref: ${{ needs.generate.outputs.base_sha }}",
             self.workflow[record_main:],
@@ -196,6 +188,12 @@ class WorkflowTests(unittest.TestCase):
         )
         self.assertIn(
             'python3 "$PUSHER" "$ECOSYSTEM" "$BRANCH"', self.workflow
+        )
+
+    def test_apply_opens_a_fresh_pr_after_replacement(self):
+        self.assertIn("- name: Open fresh draft pull request", self.workflow)
+        self.assertNotIn(
+            "- name: Open or update draft pull request", self.workflow
         )
 
 

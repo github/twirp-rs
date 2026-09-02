@@ -36,6 +36,14 @@ def conflicts(ecosystem, pull_requests):
                     f"#{pull_request['number']} uses reserved branch {reserved} "
                     "but is no longer a draft"
                 )
+            elif any(
+                review.get("state") == "APPROVED"
+                for review in pull_request.get("latestReviews", [])
+            ):
+                found.append(
+                    f"#{pull_request['number']} uses reserved branch {reserved} "
+                    "and has an approval; refusing to replace its reviewed diff"
+                )
             continue
 
         combined = author == "code-search-bot" and re.search(
@@ -74,7 +82,7 @@ def main():
             "--limit",
             "100",
             "--json",
-            "number,title,headRefName,author,isDraft,isCrossRepository",
+            "number,title,headRefName,author,isDraft,isCrossRepository,latestReviews",
         ],
         check=True,
         capture_output=True,

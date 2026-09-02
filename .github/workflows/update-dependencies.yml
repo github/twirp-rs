@@ -78,7 +78,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: refs/heads/main
           fetch-depth: 0
           persist-credentials: false
 
@@ -663,7 +663,7 @@ jobs:
           python3 "$PUSHER" "$ECOSYSTEM" "$BRANCH"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Open or update draft pull request
+      - name: Open fresh draft pull request
         if: steps.push.outputs.pushed == 'true'
         env:
           BRANCH: ${{ needs.generate.outputs.branch }}
@@ -681,25 +681,14 @@ jobs:
           <sub><em><img src="https://raw.githubusercontent.com/tclem/dotfiles/main/copilot/assets/copilot-signature.svg" alt="" align="absmiddle" style="display: inline;">&nbsp;&nbsp;Generated via Copilot (GPT-5.6 Sol) <a href="https://adaptivepatchwork.com/ai-attribution/">on behalf</a> of @tclem</em></sub>
           EOF
 
-          existing=$(gh pr list --head "$BRANCH" --state open \
-            --json number --jq '.[0].number // empty')
-          if [[ -n "$existing" ]]; then
-            jq -n \
-              --arg title "$title" \
-              --rawfile body "$RUNNER_TEMP/dependency-pr-body.md" \
-              '{title: $title, body: $body}' \
-              | gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/$existing" --input -
-            number="$existing"
-          else
-            jq -n \
-              --arg title "$title" \
-              --arg head "$BRANCH" \
-              --rawfile body "$RUNNER_TEMP/dependency-pr-body.md" \
-              '{title: $title, head: $head, base: "main", body: $body, draft: true}' \
-              | gh api -X POST "repos/${GITHUB_REPOSITORY}/pulls" --input - \
-              > "$RUNNER_TEMP/dependency-pr.json"
-            number=$(jq -r '.number' "$RUNNER_TEMP/dependency-pr.json")
-          fi
+          jq -n \
+            --arg title "$title" \
+            --arg head "$BRANCH" \
+            --rawfile body "$RUNNER_TEMP/dependency-pr-body.md" \
+            '{title: $title, head: $head, base: "main", body: $body, draft: true}' \
+            | gh api -X POST "repos/${GITHUB_REPOSITORY}/pulls" --input - \
+            > "$RUNNER_TEMP/dependency-pr.json"
+          number=$(jq -r '.number' "$RUNNER_TEMP/dependency-pr.json")
 
           if [[ "$ECOSYSTEM" == "cargo" ]]; then
             labels='["dependencies","rust"]'
