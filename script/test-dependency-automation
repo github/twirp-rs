@@ -88,6 +88,7 @@ class ReplacementTests(unittest.TestCase):
             mock.patch.object(push, "push_replacement"),
             mock.patch.object(push, "rollback_replacement"),
             mock.patch.object(push, "close_pull_request"),
+            mock.patch.object(push, "reopen_pull_request"),
         ]
         (
             self.reserved_pull_request,
@@ -97,10 +98,12 @@ class ReplacementTests(unittest.TestCase):
             self.push_replacement,
             self.rollback_replacement,
             self.close_pull_request,
+            self.reopen_pull_request,
         ) = [patch.start() for patch in self.patches]
         self.addCleanup(lambda: [patch.stop() for patch in reversed(self.patches)])
 
     def test_closes_old_pr_and_rechecks_before_push(self):
+        self.remote_branch_sha.side_effect = ["old", "new"]
         calls = []
         self.run_conflict_check.side_effect = lambda *_: calls.append("conflict")
         self.close_pull_request.side_effect = lambda *_: calls.append("close")
@@ -123,11 +126,15 @@ class ReplacementTests(unittest.TestCase):
             "automation/cargo-dependencies", "old"
         )
         self.rollback_replacement.assert_not_called()
+        self.reopen_pull_request.assert_not_called()
         self.assertEqual(calls, ["conflict", "close", "conflict", "push"])
 
-    def test_close_failure_prevents_push(self):
+    def test_close_failure_reopens_pr_and_prevents_push(self):
+        self.remote_branch_sha.side_effect = ["old", "old"]
         self.close_pull_request.side_effect = RuntimeError("not permitted")
-        with self.assertRaisesRegex(RuntimeError, "not permitted"):
+        with self.assertRaisesRegex(
+            RuntimeError, "restored original dependency pull request state"
+        ):
             push.replace_dependency_branch(
                 "cargo",
                 "automation/cargo-dependencies",
@@ -137,13 +144,17 @@ class ReplacementTests(unittest.TestCase):
 
         self.push_replacement.assert_not_called()
         self.rollback_replacement.assert_not_called()
+        self.reopen_pull_request.assert_called_once_with("github/twirp-rs", 7)
 
-    def test_second_conflict_check_prevents_push(self):
+    def test_second_conflict_check_reopens_pr_and_prevents_push(self):
+        self.remote_branch_sha.side_effect = ["old", "old"]
         self.run_conflict_check.side_effect = [
             None,
             RuntimeError("conflicting PR appeared"),
         ]
-        with self.assertRaisesRegex(RuntimeError, "conflicting PR appeared"):
+        with self.assertRaisesRegex(
+            RuntimeError, "restored original dependency pull request state"
+        ):
             push.replace_dependency_branch(
                 "cargo",
                 "automation/cargo-dependencies",
@@ -154,6 +165,28 @@ class ReplacementTests(unittest.TestCase):
         self.close_pull_request.assert_called_once_with("github/twirp-rs", 7)
         self.push_replacement.assert_not_called()
         self.rollback_replacement.assert_not_called()
+        self.reopen_pull_request.assert_called_once_with("github/twirp-rs", 7)
+
+    def test_verification_failure_rolls_back_branch_and_reopens_pr(self):
+        self.remote_branch_sha.side_effect = ["old", "new", "new"]
+        self.reserved_pull_request.side_effect = [
+            self.pull_request,
+            self.pull_request,
+        ]
+        with self.assertRaisesRegex(
+            RuntimeError, "restored original dependency pull request state"
+        ):
+            push.replace_dependency_branch(
+                "cargo",
+                "automation/cargo-dependencies",
+                "github/twirp-rs",
+                "checker",
+            )
+
+        self.rollback_replacement.assert_called_once_with(
+            "automation/cargo-dependencies", "old", "new"
+        )
+        self.reopen_pull_request.assert_called_once_with("github/twirp-rs", 7)
 
 
 class WorkflowTests(unittest.TestCase):
@@ -194,6 +227,18 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("- name: Open fresh draft pull request", self.workflow)
         self.assertNotIn(
             "- name: Open or update draft pull request", self.workflow
+        )
+
+    def test_scheduled_and_manual_runs_share_ecosystem_concurrency_lane(self):
+        self.assertIn(
+            "group: update-dependencies-${{ "
+            "(github.event_name == 'workflow_dispatch' && inputs.ecosystem) || "
+            "(github.event.schedule == '37 6 * * 2' && 'cargo') || "
+            "(github.event.schedule == '17 7 * * 2' && 'github-actions') }}",
+            self.workflow,
+        )
+        self.assertNotIn(
+            "github.event.schedule || inputs.ecosystem", self.workflow
         )
 
 

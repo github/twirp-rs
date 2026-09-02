@@ -38,7 +38,15 @@ def reserved_pull_request(branch):
 
 
 def close_pull_request(repository, number):
-    body = json.dumps({"state": "closed"})
+    set_pull_request_state(repository, number, "closed")
+
+
+def reopen_pull_request(repository, number):
+    set_pull_request_state(repository, number, "open")
+
+
+def set_pull_request_state(repository, number, state):
+    body = json.dumps({"state": state})
     run(
         [
             "gh",
@@ -100,6 +108,29 @@ def rollback_replacement(branch, previous_sha, replacement_sha):
         run(["git", "push", lease, "origin", f":refs/heads/{branch}"])
 
 
+def restore_original_state(
+    branch, previous_sha, replacement_sha, repository, pull_request
+):
+    failures = []
+    try:
+        observed_sha = remote_branch_sha(branch)
+        if observed_sha == replacement_sha:
+            rollback_replacement(branch, previous_sha, replacement_sha)
+        elif observed_sha != previous_sha:
+            failures.append(
+                f"reserved branch is at unexpected SHA {observed_sha or 'missing'}"
+            )
+    except Exception as error:
+        failures.append(f"branch restore failed: {error}")
+
+    if pull_request:
+        try:
+            reopen_pull_request(repository, pull_request["number"])
+        except Exception as error:
+            failures.append(f"pull request reopen failed: {error}")
+    return failures
+
+
 def replace_dependency_branch(ecosystem, branch, repository, checker):
     pull_request = reserved_pull_request(branch)
     previous_sha = remote_branch_sha(branch)
@@ -114,12 +145,12 @@ def replace_dependency_branch(ecosystem, branch, repository, checker):
 
     replacement_sha = current_sha()
     run_conflict_check(checker, ecosystem)
-    if pull_request:
-        close_pull_request(repository, pull_request["number"])
-    run_conflict_check(checker, ecosystem)
-    push_replacement(branch, previous_sha)
 
     try:
+        if pull_request:
+            close_pull_request(repository, pull_request["number"])
+        run_conflict_check(checker, ecosystem)
+        push_replacement(branch, previous_sha)
         if remote_branch_sha(branch) != replacement_sha:
             raise RuntimeError(f"Reserved branch {branch} did not reach replacement SHA")
         if reserved_pull_request(branch):
@@ -127,14 +158,15 @@ def replace_dependency_branch(ecosystem, branch, repository, checker):
                 "A pull request appeared on the reserved branch during replacement"
             )
     except Exception as replacement_error:
-        try:
-            rollback_replacement(branch, previous_sha, replacement_sha)
-        except Exception as rollback_error:
+        failures = restore_original_state(
+            branch, previous_sha, replacement_sha, repository, pull_request
+        )
+        if failures:
             raise RuntimeError(
-                f"{replacement_error}; rollback also failed: {rollback_error}"
-            ) from rollback_error
+                f"{replacement_error}; restore failed: {'; '.join(failures)}"
+            ) from replacement_error
         raise RuntimeError(
-            f"{replacement_error}; restored {branch} to its previous state"
+            f"{replacement_error}; restored original dependency pull request state"
         ) from replacement_error
 
 

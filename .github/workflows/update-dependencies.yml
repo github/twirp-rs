@@ -21,7 +21,7 @@ defaults:
     shell: bash
 
 concurrency:
-  group: update-dependencies-${{ github.event.schedule || inputs.ecosystem }}
+  group: update-dependencies-${{ (github.event_name == 'workflow_dispatch' && inputs.ecosystem) || (github.event.schedule == '37 6 * * 2' && 'cargo') || (github.event.schedule == '17 7 * * 2' && 'github-actions') }}
   cancel-in-progress: false
 
 jobs:

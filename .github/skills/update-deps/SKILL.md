@@ -68,7 +68,7 @@ Use `Update Cargo dependencies` or `Update GitHub Actions dependencies` as the t
 
 ## Conflicts, security, and rollout
 
-`script/check-dependency-pr-conflicts` blocks a run while a Dependabot PR, a combined Dependabot PR, a human-owned reserved branch, a non-draft reserved PR, or an approved reserved PR overlaps the ecosystem. When replacing an unapproved bot draft, the write job closes it, reruns the trusted checker immediately before pushing, and opens a fresh draft so reviews cannot carry across material dependency updates. Never create another dependency PR to work around a refusal.
+`script/check-dependency-pr-conflicts` blocks a run while a Dependabot PR, a combined Dependabot PR, a human-owned reserved branch, a non-draft reserved PR, or an approved reserved PR overlaps the ecosystem. When replacing an unapproved bot draft, the write job closes it, reruns the trusted checker immediately before pushing, and opens a fresh draft so reviews cannot carry across material dependency updates. A failure after closing restores the old branch as needed and reopens the original draft. Never create another dependency PR to work around a refusal.
 
 Dependabot version PRs are disabled only as this replacement lands; Dependabot security updates remain enabled. Rollout order is: exclude this repository from the external dependency combiner, resolve or close the existing #343-#348 dependency PRs, then allow these schedules to create their reserved drafts.
 
