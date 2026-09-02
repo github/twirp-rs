@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+
+
+RESERVED_BRANCHES = {
+    "cargo": "automation/cargo-dependencies",
+    "github-actions": "automation/github-actions-dependencies",
+}
+BOT_LOGINS = {"github-actions[bot]", "app/github-actions"}
+
+
+def conflicts(ecosystem, pull_requests):
+    reserved = RESERVED_BRANCHES[ecosystem]
+    found = []
+
+    for pull_request in pull_requests:
+        if pull_request.get("isCrossRepository", False):
+            continue
+        branch = pull_request["headRefName"]
+        author = (pull_request.get("author") or {}).get("login", "")
+        title = pull_request["title"]
+
+        if branch == reserved:
+            if author not in BOT_LOGINS:
+                found.append(
+                    f"#{pull_request['number']} uses reserved branch {reserved} "
+                    f"but is owned by {author or 'an unknown author'}"
+                )
+            elif not pull_request.get("isDraft", False):
+                found.append(
+                    f"#{pull_request['number']} uses reserved branch {reserved} "
+                    "but is no longer a draft"
+                )
+            continue
+
+        combined = author == "code-search-bot" and re.search(
+            r"\bcombined dependabot\b", title, re.IGNORECASE
+        )
+        cargo = branch.startswith("dependabot/cargo/")
+        actions = branch.startswith("dependabot/github_actions/")
+
+        if combined or (ecosystem == "cargo" and cargo) or (
+            ecosystem == "github-actions" and actions
+        ):
+            found.append(
+                f"#{pull_request['number']} {title} "
+                f"({branch}, {author or 'unknown author'})"
+            )
+
+    return found
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Refuse overlapping dependency update pull requests."
+    )
+    parser.add_argument("ecosystem", choices=sorted(RESERVED_BRANCHES))
+    args = parser.parse_args()
+
+    result = subprocess.run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--base",
+            "main",
+            "--limit",
+            "100",
+            "--json",
+            "number,title,headRefName,author,isDraft,isCrossRepository",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    pull_requests = json.loads(result.stdout)
+    found = conflicts(args.ecosystem, pull_requests)
+    if found:
+        print(
+            f"Dependency automation is blocked for {args.ecosystem} by open pull requests:",
+            file=sys.stderr,
+        )
+        for conflict in found:
+            print(f"  {conflict}", file=sys.stderr)
+        return 3
+
+    print(f"No conflicting {args.ecosystem} dependency pull requests.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

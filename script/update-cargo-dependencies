@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ ! -f Cargo.toml || ! -f Cargo.lock ]]; then
+    echo "error: run from the Cargo workspace root" >&2
+    exit 2
+fi
+
+cargo update --verbose

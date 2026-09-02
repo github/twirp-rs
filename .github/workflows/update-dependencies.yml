@@ -1,0 +1,702 @@
+name: Update dependencies
+
+on:
+  schedule:
+    - cron: "37 6 * * 2"
+    - cron: "17 7 * * 2"
+  workflow_dispatch:
+    inputs:
+      ecosystem:
+        description: Dependency ecosystem to update
+        required: true
+        type: choice
+        options:
+          - cargo
+          - github-actions
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: update-dependencies-${{ github.event.schedule || inputs.ecosystem }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: Generate dependency update
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      pull-requests: read
+      copilot-requests: write
+    outputs:
+      ecosystem: ${{ steps.ecosystem.outputs.name }}
+      branch: ${{ steps.ecosystem.outputs.branch }}
+      blocked: ${{ steps.preflight.outputs.blocked }}
+      has_changes: ${{ steps.changes.outputs.has_changes }}
+    steps:
+      - name: Select ecosystem
+        id: ecosystem
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_ECOSYSTEM: ${{ inputs.ecosystem }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            ecosystem="$INPUT_ECOSYSTEM"
+          elif [[ "$EVENT_SCHEDULE" == "37 6 * * 2" ]]; then
+            ecosystem="cargo"
+          elif [[ "$EVENT_SCHEDULE" == "17 7 * * 2" ]]; then
+            ecosystem="github-actions"
+          else
+            echo "::error::Unknown dependency update schedule: $EVENT_SCHEDULE"
+            exit 2
+          fi
+
+          case "$ecosystem" in
+            cargo)
+              branch="automation/cargo-dependencies"
+              ;;
+            github-actions)
+              branch="automation/github-actions-dependencies"
+              ;;
+            *)
+              echo "::error::Unsupported ecosystem: $ecosystem"
+              exit 2
+              ;;
+          esac
+
+          echo "name=$ecosystem" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refuse overlapping dependency pull requests
+        id: preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ECOSYSTEM: ${{ steps.ecosystem.outputs.name }}
+        run: |
+          set +e
+          set -o pipefail
+          script/check-dependency-pr-conflicts "$ECOSYSTEM" 2>&1 \
+            | tee /tmp/dependency-pr-conflicts.log
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          if [[ "$rc" == "3" ]]; then
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Dependency update blocked"
+              echo
+              echo '```'
+              cat /tmp/dependency-pr-conflicts.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ "$rc" != "0" ]]; then
+            exit "$rc"
+          fi
+          echo "blocked=false" >> "$GITHUB_OUTPUT"
+
+      - name: Run deterministic updater
+        if: steps.preflight.outputs.blocked != 'true'
+        env:
+          ECOSYSTEM: ${{ steps.ecosystem.outputs.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dependency-update-context
+          if [[ "$ECOSYSTEM" == "cargo" ]]; then
+            script/update-cargo-dependencies 2>&1 \
+              | tee /tmp/dependency-update-context/native-update.log
+          else
+            script/update-github-actions 2>&1 \
+              | tee /tmp/dependency-update-context/native-update.log
+          fi
+
+      - name: Detect updater changes
+        id: changes
+        if: steps.preflight.outputs.blocked != 'true'
+        run: |
+          set -euo pipefail
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "The deterministic updater produced no changes; the agent will check direct dependencies and newer action release lines." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Install pinned protoc
+        if: steps.changes.outputs.has_changes == 'true' && steps.ecosystem.outputs.name == 'cargo'
+        run: script/install-protoc
+
+      - name: Capture initial checks
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          ECOSYSTEM: ${{ steps.ecosystem.outputs.name }}
+        run: |
+          set +e
+          set -o pipefail
+          context=/tmp/dependency-update-context
+
+          if [[ "$ECOSYSTEM" == "cargo" ]]; then
+            make build 2>&1 | tee "$context/build-initial.log"
+            echo "${PIPESTATUS[0]}" > "$context/build-initial.exit"
+            make test 2>&1 | tee "$context/test-initial.log"
+            echo "${PIPESTATUS[0]}" > "$context/test-initial.exit"
+            make lint 2>&1 | tee "$context/lint-initial.log"
+            echo "${PIPESTATUS[0]}" > "$context/lint-initial.exit"
+          else
+            script/update-github-actions --check 2>&1 \
+              | tee "$context/actions-initial.log"
+            echo "${PIPESTATUS[0]}" > "$context/actions-initial.exit"
+            git diff --check 2>&1 | tee "$context/diff-initial.log"
+            echo "${PIPESTATUS[0]}" > "$context/diff-initial.exit"
+          fi
+          exit 0
+
+      - name: Create post-updater baseline
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          set -euo pipefail
+          tar -cf /tmp/post-updater-baseline.tar \
+            --exclude='.git' \
+            --exclude='target' \
+            -C . .
+
+      - name: Upload post-updater baseline
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-update-${{ github.run_id }}-${{ steps.ecosystem.outputs.name }}-baseline
+          path: /tmp/post-updater-baseline.tar
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Install pinned Copilot CLI
+        id: install_copilot
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          set -o pipefail
+          version=1.0.83-2
+          case "$(uname -m)" in
+            x86_64|amd64) arch=x64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            *)
+              echo "::error::Unsupported runner architecture: $(uname -m)"
+              echo "1" > /tmp/dependency-update-context/copilot-install.exit
+              echo "install_rc=1" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          asset="copilot-linux-${arch}.tar.gz"
+          release="https://github.com/github/copilot-cli/releases/download/v${version}"
+          install_dir="$RUNNER_TEMP/copilot-bin"
+          mkdir -p "$install_dir"
+          curl -fsSL --retry 3 --retry-connrefused \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "$release/$asset" \
+            -o "$RUNNER_TEMP/$asset"
+          rc=$?
+          if [[ "$rc" == "0" ]]; then
+            curl -fsSL --retry 3 --retry-connrefused \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "$release/SHA256SUMS.txt" \
+              -o "$RUNNER_TEMP/copilot-SHA256SUMS.txt"
+            rc=$?
+          fi
+          if [[ "$rc" == "0" ]]; then
+            expected=$(grep "  $asset$" "$RUNNER_TEMP/copilot-SHA256SUMS.txt")
+            if [[ -z "$expected" ]]; then
+              echo "::error::Copilot CLI checksum entry not found for $asset"
+              rc=1
+            else
+              printf '%s\n' "$expected" \
+                | (cd "$RUNNER_TEMP" && sha256sum --check --status -)
+              rc=$?
+            fi
+          fi
+          if [[ "$rc" == "0" ]]; then
+            tar -xzf "$RUNNER_TEMP/$asset" -C "$install_dir"
+            rc=$?
+          fi
+          if [[ "$rc" == "0" ]]; then
+            export PATH="$install_dir:$PATH"
+            echo "$install_dir" >> "$GITHUB_PATH"
+            installed=$("$install_dir/copilot" --version)
+            if [[ "$installed" != *"1.0.83-2"* ]]; then
+              echo "::error::Expected Copilot CLI 1.0.83-2, got: $installed"
+              rc=1
+            fi
+          fi
+          echo "$rc" > /tmp/dependency-update-context/copilot-install.exit
+          echo "install_rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run update-deps agent
+        id: agent
+        if: steps.changes.outputs.has_changes == 'true' && steps.install_copilot.outputs.install_rc == '0'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ECOSYSTEM: ${{ steps.ecosystem.outputs.name }}
+        run: |
+          set +e
+          set -o pipefail
+          prompt=$(cat <<EOF
+          Invoke and follow the repository's update-deps skill before doing anything else.
+          Work only on the ${ECOSYSTEM} dependency update already present in the working tree.
+          Read the captured native updater and initial check output under /tmp/dependency-update-context.
+          Repair compatibility failures, then run the skill's required validation.
+          Do not commit, push, create or update pull requests, change workflow permissions,
+          or modify the dependency automation implementation.
+          EOF
+          )
+
+          timeout 20m copilot \
+            --autopilot \
+            --allow-all-tools \
+            --disable-builtin-mcps \
+            --no-ask-user \
+            --no-auto-update \
+            --model gpt-5.6-sol \
+            --max-autopilot-continues 3 \
+            --secret-env-vars=GITHUB_TOKEN \
+            --prompt "$prompt" \
+            2>&1 | tee /tmp/dependency-update-context/copilot-agent.log
+          rc=${PIPESTATUS[0]}
+          echo "$rc" > /tmp/dependency-update-context/copilot-agent.exit
+          echo "agent_rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run final machine checks
+        id: final_checks
+        if: always() && steps.changes.outputs.has_changes == 'true'
+        env:
+          ECOSYSTEM: ${{ steps.ecosystem.outputs.name }}
+        run: |
+          set +e
+          set -o pipefail
+          context=/tmp/dependency-update-context
+          rc=0
+
+          if [[ "$ECOSYSTEM" == "cargo" ]]; then
+            make build 2>&1 | tee "$context/build-final.log"
+            [[ "${PIPESTATUS[0]}" == "0" ]] || rc=1
+            make test 2>&1 | tee "$context/test-final.log"
+            [[ "${PIPESTATUS[0]}" == "0" ]] || rc=1
+            make lint 2>&1 | tee "$context/lint-final.log"
+            [[ "${PIPESTATUS[0]}" == "0" ]] || rc=1
+          else
+            script/update-github-actions 2>&1 \
+              | tee "$context/actions-final.log"
+            [[ "${PIPESTATUS[0]}" == "0" ]] || rc=1
+            script/update-github-actions --check 2>&1 \
+              | tee -a "$context/actions-final.log"
+            [[ "${PIPESTATUS[0]}" == "0" ]] || rc=1
+            git diff --check 2>&1 | tee "$context/diff-final.log"
+            [[ "${PIPESTATUS[0]}" == "0" ]] || rc=1
+          fi
+
+          echo "$rc" > "$context/final-checks.exit"
+          echo "checks_rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Stage post-agent artifact
+        if: always() && steps.changes.outputs.has_changes == 'true'
+        env:
+          ECOSYSTEM: ${{ steps.ecosystem.outputs.name }}
+        run: |
+          set -euo pipefail
+          bundle=/tmp/dependency-update-bundle
+          mkdir -p "$bundle"
+          tar -cf "$bundle/post-agent.tar" \
+            --exclude='.git' \
+            --exclude='target' \
+            -C . .
+          cp -R /tmp/dependency-update-context "$bundle/context"
+          printf '%s\n' "$ECOSYSTEM" > "$bundle/ecosystem"
+          if [[ -f /tmp/dependency-pr-title.txt ]]; then
+            cp /tmp/dependency-pr-title.txt "$bundle/pr-title.txt"
+          fi
+          if [[ -f /tmp/dependency-pr-body.md ]]; then
+            cp /tmp/dependency-pr-body.md "$bundle/pr-body.md"
+          fi
+
+      - name: Upload post-agent artifact
+        if: always() && steps.changes.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-update-${{ github.run_id }}-${{ steps.ecosystem.outputs.name }}-post-agent
+          path: /tmp/dependency-update-bundle/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Enforce bounded success
+        if: always() && steps.changes.outputs.has_changes == 'true'
+        run: |
+          set -euo pipefail
+          context=/tmp/dependency-update-context
+          failed=0
+          for result in copilot-install copilot-agent final-checks; do
+            file="$context/$result.exit"
+            if [[ ! -f "$file" ]]; then
+              echo "::error::$result did not produce an exit status"
+              failed=1
+            elif [[ "$(cat "$file")" != "0" ]]; then
+              echo "::error::$result failed with exit $(cat "$file")"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+  apply:
+    name: Apply dependency update
+    needs: generate
+    if: needs.generate.outputs.blocked != 'true' && needs.generate.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Download post-updater baseline
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: dependency-update-${{ github.run_id }}-${{ needs.generate.outputs.ecosystem }}-baseline
+          path: ${{ runner.temp }}/dependency-update-baseline
+
+      - name: Download post-agent artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: dependency-update-${{ github.run_id }}-${{ needs.generate.outputs.ecosystem }}-post-agent
+          path: ${{ runner.temp }}/dependency-update-post-agent
+
+      - name: Validate agent outputs
+        id: agent_outputs
+        env:
+          BUNDLE: ${{ runner.temp }}/dependency-update-post-agent
+        run: |
+          set -euo pipefail
+          title_file="$BUNDLE/pr-title.txt"
+          body_file="$BUNDLE/pr-body.md"
+          if [[ ! -s "$title_file" ]]; then
+            echo "::error::Agent did not write /tmp/dependency-pr-title.txt"
+            exit 1
+          fi
+
+          title=$(tr -d '\r\n' < "$title_file")
+          if [[ "$title" == "noop" ]]; then
+            echo "noop=true" >> "$GITHUB_OUTPUT"
+            echo "Agent reported a clean no-op." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ ${#title} -gt 120 || ! -s "$body_file" ]]; then
+            echo "::error::Agent PR title or body is invalid"
+            exit 1
+          fi
+          echo "noop=false" >> "$GITHUB_OUTPUT"
+
+      - name: Unpack artifact trees
+        if: steps.agent_outputs.outputs.noop != 'true'
+        env:
+          BASELINE: ${{ runner.temp }}/dependency-update-baseline
+          BUNDLE: ${{ runner.temp }}/dependency-update-post-agent
+          RUNNER_TEMP_DIR: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP_DIR/dependency-baseline-tree"
+          mkdir -p "$RUNNER_TEMP_DIR/dependency-post-agent-tree"
+          tar -xf "$BASELINE/post-updater-baseline.tar" \
+            -C "$RUNNER_TEMP_DIR/dependency-baseline-tree"
+          tar -xf "$BUNDLE/post-agent.tar" \
+            -C "$RUNNER_TEMP_DIR/dependency-post-agent-tree"
+
+      - name: Enforce agent path allowlist
+        if: steps.agent_outputs.outputs.noop != 'true'
+        env:
+          ECOSYSTEM: ${{ needs.generate.outputs.ecosystem }}
+          BASELINE_TREE: ${{ runner.temp }}/dependency-baseline-tree
+          POST_AGENT_TREE: ${{ runner.temp }}/dependency-post-agent-tree
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import re
+          import stat
+          import sys
+
+          baseline = pathlib.Path(os.environ["BASELINE_TREE"])
+          post_agent = pathlib.Path(os.environ["POST_AGENT_TREE"])
+          ecosystem = os.environ["ECOSYSTEM"]
+
+          def inventory(root):
+              entries = {}
+              for path in sorted(root.rglob("*")):
+                  relative = path.relative_to(root).as_posix()
+                  mode = stat.S_IMODE(path.lstat().st_mode)
+                  if path.is_symlink():
+                      entries[relative] = ("symlink", mode, os.readlink(path))
+                  elif path.is_file():
+                      entries[relative] = (
+                          "file",
+                          mode,
+                          hashlib.sha256(path.read_bytes()).hexdigest(),
+                      )
+              return entries
+
+          before = inventory(baseline)
+          after = inventory(post_agent)
+          changed = sorted(
+              path for path in set(before) | set(after) if before.get(path) != after.get(path)
+          )
+
+          if ecosystem == "cargo":
+              violations = [
+                  path
+                  for path in changed
+                  if not (
+                      path in {"Cargo.toml", "Cargo.lock"}
+                      or path.startswith("crates/")
+                      or path.startswith("example/")
+                  )
+              ]
+          else:
+              action = re.compile(
+                  r"^(?P<prefix>\s*(?:-\s*)?uses:\s*)"
+                  r"(?P<quote>['\"]?)"
+                  r"(?P<repository>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)"
+                  r"(?P<path>/[^@\s#]+)?@"
+                  r"(?P<revision>[^\s#]+)"
+                  r"(?P=quote)\s+#\s+(?P<tracked_ref>\S+).*$"
+              )
+              violations = []
+              for relative in changed:
+                  before_entry = before.get(relative)
+                  after_entry = after.get(relative)
+                  if (
+                      before_entry is None
+                      or after_entry is None
+                      or before_entry[0] != "file"
+                      or after_entry[0] != "file"
+                      or before_entry[1] != after_entry[1]
+                      or not (
+                          relative.startswith(".github/workflows/")
+                          or relative.startswith(".github/actions/")
+                      )
+                  ):
+                      violations.append(relative)
+                      continue
+
+                  old_lines = (baseline / relative).read_text(encoding="utf-8").splitlines()
+                  new_lines = (post_agent / relative).read_text(encoding="utf-8").splitlines()
+                  if len(old_lines) != len(new_lines):
+                      violations.append(relative)
+                      continue
+
+                  valid = True
+                  for old_line, new_line in zip(old_lines, new_lines):
+                      if old_line == new_line:
+                          continue
+                      old_action = action.match(old_line)
+                      new_action = action.match(new_line)
+                      if (
+                          old_action is None
+                          or new_action is None
+                          or old_action.group("prefix") != new_action.group("prefix")
+                          or old_action.group("quote") != new_action.group("quote")
+                          or old_action.group("repository")
+                          != new_action.group("repository")
+                          or old_action.group("path") != new_action.group("path")
+                          or re.fullmatch(
+                              r"[0-9a-f]{40}", new_action.group("revision")
+                          )
+                          is None
+                      ):
+                          valid = False
+                          break
+                  if not valid:
+                      violations.append(relative)
+
+          if violations:
+              print("Agent changed paths outside its ecosystem allowlist:", file=sys.stderr)
+              for path in violations:
+                  print(f"  {path}", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"Verified {len(changed)} agent worktree changes.")
+          PY
+
+      - name: Refuse human-owned reserved state
+        if: steps.agent_outputs.outputs.noop != 'true'
+        env:
+          BRANCH: ${{ needs.generate.outputs.branch }}
+          BASE_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing=$(gh pr list --head "$BRANCH" --state open \
+            --json number,author,isDraft)
+          count=$(jq 'length' <<<"$existing")
+          if [[ "$count" -gt 1 ]]; then
+            echo "::error::Multiple open pull requests use reserved branch $BRANCH"
+            exit 1
+          fi
+          if [[ "$count" == "1" ]]; then
+            author=$(jq -r '.[0].author.login // ""' <<<"$existing")
+            draft=$(jq -r '.[0].isDraft' <<<"$existing")
+            if [[ "$author" != "github-actions[bot]" && "$author" != "app/github-actions" ]]; then
+              echo "::error::Reserved pull request must be owned by GitHub Actions"
+              exit 1
+            fi
+            if [[ "$draft" != "true" ]]; then
+              echo "::error::Reserved pull request must remain a github-actions[bot] draft"
+              exit 1
+            fi
+          fi
+
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+            unexpected=$(git log "$BASE_SHA..origin/$BRANCH" \
+              --format='%an <%ae>|%cn <%ce>' \
+              | grep -v -E '^github-actions\[bot\] <41898282\+github-actions\[bot\]@users\.noreply\.github\.com>\|github-actions\[bot\] <41898282\+github-actions\[bot\]@users\.noreply\.github\.com>$' \
+              || true)
+            if [[ -n "$unexpected" ]]; then
+              echo "::error::Reserved branch contains a human-authored or human-committed change"
+              printf '%s\n' "$unexpected"
+              exit 1
+            fi
+          fi
+
+      - name: Overlay and validate update tree
+        id: staged
+        if: steps.agent_outputs.outputs.noop != 'true'
+        env:
+          BASE_SHA: ${{ github.sha }}
+          ECOSYSTEM: ${{ needs.generate.outputs.ecosystem }}
+          POST_AGENT_TREE: ${{ runner.temp }}/dependency-post-agent-tree
+        run: |
+          set -euo pipefail
+          git checkout -B dependency-update "$BASE_SHA"
+          rsync -a --delete --exclude='.git' "$POST_AGENT_TREE/" ./
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "Artifact matched main; skipping push and pull request." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          violations=
+          while IFS= read -r path; do
+            if [[ "$ECOSYSTEM" == "cargo" ]]; then
+              case "$path" in
+                Cargo.toml|Cargo.lock|crates/*|example/*) ;;
+                *) violations+="${path}"$'\n' ;;
+              esac
+            else
+              case "$path" in
+                .github/workflows/*.yml|.github/workflows/*.yaml|.github/actions/*) ;;
+                *) violations+="${path}"$'\n' ;;
+              esac
+            fi
+          done < <(git diff --cached --name-only)
+
+          if [[ -n "$violations" ]]; then
+            echo "::error::Dependency update contains paths outside the ecosystem allowlist"
+            printf '%s' "$violations"
+            exit 1
+          fi
+
+          git diff --cached --check
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push bot branch
+        id: push
+        if: steps.staged.outputs.has_changes == 'true'
+        env:
+          BRANCH: ${{ needs.generate.outputs.branch }}
+          BUNDLE: ${{ runner.temp }}/dependency-update-post-agent
+        run: |
+          set -euo pipefail
+          title=$(tr -d '\r\n' < "$BUNDLE/pr-title.txt")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --no-verify -m "$title" \
+            -m "Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
+
+          if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
+            expected=$(git rev-parse "origin/$BRANCH")
+            git push \
+              --force-with-lease="refs/heads/$BRANCH:$expected" \
+              origin "HEAD:refs/heads/$BRANCH"
+          else
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update draft pull request
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          BRANCH: ${{ needs.generate.outputs.branch }}
+          ECOSYSTEM: ${{ needs.generate.outputs.ecosystem }}
+          BUNDLE: ${{ runner.temp }}/dependency-update-post-agent
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title=$(tr -d '\r\n' < "$BUNDLE/pr-title.txt")
+          cp "$BUNDLE/pr-body.md" "$RUNNER_TEMP/dependency-pr-body.md"
+          cat >> "$RUNNER_TEMP/dependency-pr-body.md" <<'EOF'
+
+          Required pull request CI remains approval-required, and human review still applies. This workflow cannot perform post-PR fixups until the repository has a scoped GitHub App or PAT whose pull request events can trigger CI.
+
+          <sub><em><img src="https://raw.githubusercontent.com/tclem/dotfiles/main/copilot/assets/copilot-signature.svg" alt="" align="absmiddle" style="display: inline;">&nbsp;&nbsp;Generated via Copilot (GPT-5.6 Sol) <a href="https://adaptivepatchwork.com/ai-attribution/">on behalf</a> of @tclem</em></sub>
+          EOF
+
+          existing=$(gh pr list --head "$BRANCH" --state open \
+            --json number --jq '.[0].number // empty')
+          if [[ -n "$existing" ]]; then
+            jq -n \
+              --arg title "$title" \
+              --rawfile body "$RUNNER_TEMP/dependency-pr-body.md" \
+              '{title: $title, body: $body}' \
+              | gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/$existing" --input -
+            number="$existing"
+          else
+            jq -n \
+              --arg title "$title" \
+              --arg head "$BRANCH" \
+              --rawfile body "$RUNNER_TEMP/dependency-pr-body.md" \
+              '{title: $title, head: $head, base: "main", body: $body, draft: true}' \
+              | gh api -X POST "repos/${GITHUB_REPOSITORY}/pulls" --input - \
+              > "$RUNNER_TEMP/dependency-pr.json"
+            number=$(jq -r '.number' "$RUNNER_TEMP/dependency-pr.json")
+          fi
+
+          if [[ "$ECOSYSTEM" == "cargo" ]]; then
+            labels='["dependencies","rust"]'
+          else
+            labels='["dependencies","github_actions"]'
+          fi
+          jq -n --argjson labels "$labels" '{labels: $labels}' \
+            | gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/$number/labels" --input -
+          echo "Draft dependency pull request: #$number" >> "$GITHUB_STEP_SUMMARY"

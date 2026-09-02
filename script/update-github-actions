@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+
+import argparse
+import pathlib
+import re
+import subprocess
+import sys
+
+
+ACTION = re.compile(
+    r"^(?P<prefix>\s*(?:-\s*)?uses:\s*)"
+    r"(?P<quote>['\"]?)"
+    r"(?P<repository>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)"
+    r"(?P<path>/[^@\s#]+)?@"
+    r"(?P<revision>[^\s#]+)"
+    r"(?P=quote)"
+    r"(?P<spacing>\s*)"
+    r"(?:#\s*(?P<tracked_ref>\S+)(?P<comment>.*))?$"
+)
+USES = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<value>.+?)\s*$")
+SHA = re.compile(r"^[0-9a-f]{40}$")
+TRACKED_REF = re.compile(r"^(?:stable|v[0-9]+(?:\.[0-9]+)?)$")
+WORKFLOW_ROOTS = (pathlib.Path(".github/workflows"), pathlib.Path(".github/actions"))
+
+
+def workflow_files():
+    files = []
+    for root in WORKFLOW_ROOTS:
+        if not root.exists():
+            continue
+        for extension in ("*.yml", "*.yaml"):
+            files.extend(root.rglob(extension))
+    return sorted(set(files))
+
+
+def resolve(repository, tracked_ref):
+    remote = f"https://github.com/{repository}.git"
+    refs = (
+        f"refs/tags/{tracked_ref}^{{}}",
+        f"refs/tags/{tracked_ref}",
+        f"refs/heads/{tracked_ref}",
+    )
+    result = subprocess.run(
+        ["git", "ls-remote", remote, *refs],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    found = {}
+    for line in result.stdout.splitlines():
+        revision, ref = line.split(maxsplit=1)
+        found[ref] = revision
+    for ref in refs:
+        if ref in found:
+            return found[ref]
+    raise RuntimeError(f"{repository}@{tracked_ref} does not resolve to a tag or branch")
+
+
+def update_file(path, check):
+    original = path.read_text(encoding="utf-8")
+    updated = []
+    errors = []
+
+    for number, line in enumerate(original.splitlines(keepends=True), start=1):
+        newline = "\n" if line.endswith("\n") else ""
+        content = line.removesuffix("\n")
+        match = ACTION.match(content)
+        if not match:
+            uses = USES.match(content)
+            if uses:
+                value = uses.group("value").strip("'\"")
+                if not value.startswith(("./", "docker://")):
+                    errors.append(
+                        f"{path}:{number}: unsupported remote action declaration"
+                    )
+            updated.append(line)
+            continue
+
+        revision = match.group("revision")
+        tracked_ref = match.group("tracked_ref")
+        if check:
+            if not SHA.fullmatch(revision):
+                errors.append(f"{path}:{number}: action is not pinned to a full commit SHA")
+            if not tracked_ref:
+                errors.append(f"{path}:{number}: pinned action is missing its tracked ref comment")
+            elif not TRACKED_REF.fullmatch(tracked_ref):
+                errors.append(
+                    f"{path}:{number}: tracked ref must be stable, vMAJOR, or vMAJOR.MINOR"
+                )
+            updated.append(line)
+            continue
+
+        if SHA.fullmatch(revision):
+            if not tracked_ref:
+                errors.append(
+                    f"{path}:{number}: cannot update pinned action without a tracked ref comment"
+                )
+                updated.append(line)
+                continue
+        else:
+            tracked_ref = revision
+
+        if not TRACKED_REF.fullmatch(tracked_ref):
+            errors.append(
+                f"{path}:{number}: tracked ref must be stable, vMAJOR, or vMAJOR.MINOR"
+            )
+            updated.append(line)
+            continue
+
+        try:
+            resolved = resolve(match.group("repository"), tracked_ref)
+        except (RuntimeError, subprocess.CalledProcessError) as error:
+            errors.append(f"{path}:{number}: {error}")
+            updated.append(line)
+            continue
+
+        suffix = f" # {tracked_ref}{match.group('comment') or ''}"
+        updated.append(
+            f"{match.group('prefix')}{match.group('quote')}{match.group('repository')}"
+            f"{match.group('path') or ''}@{resolved}{match.group('quote')}"
+            f"{suffix}{newline}"
+        )
+
+    if errors:
+        return errors, False
+
+    replacement = "".join(updated)
+    changed = replacement != original
+    if changed and not check:
+        path.write_text(replacement, encoding="utf-8")
+    return [], changed
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Pin tracked GitHub Actions refs to their current full commit SHAs."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify every remote action is SHA-pinned with a tracked ref comment",
+    )
+    args = parser.parse_args()
+
+    files = workflow_files()
+    if not files:
+        print("error: no GitHub Actions workflow or action files found", file=sys.stderr)
+        return 2
+
+    errors = []
+    changed = []
+    for path in files:
+        file_errors, file_changed = update_file(path, args.check)
+        errors.extend(file_errors)
+        if file_changed:
+            changed.append(str(path))
+
+    if errors:
+        print("\n".join(errors), file=sys.stderr)
+        return 1
+
+    if args.check:
+        print(f"Verified {len(files)} workflow/action files.")
+    elif changed:
+        print("Updated action pins:")
+        for path in changed:
+            print(f"  {path}")
+    else:
+        print("GitHub Actions pins are current.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
