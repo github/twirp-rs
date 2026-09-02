@@ -11,8 +11,8 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
-    # Merge only after github/blackbird excludes this repository from its
-    # external combiner; the scheduled workflow then owns version updates.
+    # Merge only after the external combiner excludes this repository; the
+    # scheduled workflow then owns version updates.
     open-pull-requests-limit: 0
     schedule:
       interval: "cron"

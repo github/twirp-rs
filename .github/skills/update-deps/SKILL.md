@@ -70,6 +70,6 @@ Use `Update Cargo dependencies` or `Update GitHub Actions dependencies` as the t
 
 `script/check-dependency-pr-conflicts` blocks a run while a Dependabot PR, a combined Dependabot PR, a human-owned reserved branch, or a non-draft reserved PR overlaps the ecosystem. Never create another dependency PR to work around that refusal.
 
-Dependabot version PRs are disabled only as this replacement lands; Dependabot security updates remain enabled. Rollout order is: exclude `github/twirp-rs` from the external Blackbird combiner, resolve or close the existing #343-#348 dependency PRs, then allow these schedules to create their reserved drafts.
+Dependabot version PRs are disabled only as this replacement lands; Dependabot security updates remain enabled. Rollout order is: exclude this repository from the external dependency combiner, resolve or close the existing #343-#348 dependency PRs, then allow these schedules to create their reserved drafts.
 
 Draft PRs still require human review, and required PR CI remains approval-required. `GITHUB_TOKEN` is intentionally used for Copilot and PR creation, but its PR events cannot drive automatic post-PR CI/fixup. That remains blocked until a repository-scoped GitHub App or PAT is provisioned.
