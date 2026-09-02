@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+DISMISSAL_MESSAGE = """Dependency automation replaced the branch tip; this approval no longer applies.
+
+<sub><em><img src="https://raw.githubusercontent.com/tclem/dotfiles/main/copilot/assets/copilot-signature.svg" alt="" align="absmiddle" style="display: inline;">&nbsp;&nbsp;Generated via Copilot (GPT-5.6 Sol) <a href="https://adaptivepatchwork.com/ai-attribution/">on behalf</a> of @tclem</em></sub>"""
+
+
+def output(args):
+    result = subprocess.run(args, check=True, capture_output=True, text=True)
+    return result.stdout
+
+
+def run(args, input_text=None):
+    subprocess.run(args, check=True, input=input_text, text=True)
+
+
+def reserved_pull_request(branch):
+    pull_requests = json.loads(
+        output(
+            [
+                "gh",
+                "pr",
+                "list",
+                "--head",
+                branch,
+                "--state",
+                "open",
+                "--json",
+                "number,headRefOid",
+            ]
+        )
+    )
+    if len(pull_requests) > 1:
+        raise RuntimeError(f"Multiple open pull requests use reserved branch {branch}")
+    return pull_requests[0] if pull_requests else None
+
+
+def submitted_reviews(repository, number):
+    pages = json.loads(
+        output(
+            [
+                "gh",
+                "api",
+                "--paginate",
+                "--slurp",
+                f"repos/{repository}/pulls/{number}/reviews",
+            ]
+        )
+    )
+    return [review for page in pages for review in page]
+
+
+def approved_reviews(reviews):
+    return [review for review in reviews if review["state"] == "APPROVED"]
+
+
+def stale_approvals(reviews, prior_approval_ids, replacement_sha):
+    return [
+        review
+        for review in approved_reviews(reviews)
+        if review["id"] in prior_approval_ids
+        or review.get("commit_id") != replacement_sha
+    ]
+
+
+def dismiss_review(repository, number, review_id):
+    body = json.dumps({"message": DISMISSAL_MESSAGE, "event": "DISMISS"})
+    run(
+        [
+            "gh",
+            "api",
+            "--method",
+            "PUT",
+            f"repos/{repository}/pulls/{number}/reviews/{review_id}/dismissals",
+            "--input",
+            "-",
+            "--silent",
+        ],
+        input_text=body,
+    )
+
+
+def remote_branch_sha(branch):
+    lines = output(["git", "ls-remote", "--heads", "origin", branch]).splitlines()
+    if len(lines) > 1:
+        raise RuntimeError(f"Multiple remote refs matched reserved branch {branch}")
+    return lines[0].split()[0] if lines else None
+
+
+def current_sha():
+    return output(["git", "rev-parse", "HEAD"]).strip()
+
+
+def run_conflict_check(checker, ecosystem):
+    run(["python3", checker, ecosystem])
+
+
+def push_replacement(branch, previous_sha):
+    if previous_sha:
+        run(
+            [
+                "git",
+                "push",
+                f"--force-with-lease=refs/heads/{branch}:{previous_sha}",
+                "origin",
+                f"HEAD:refs/heads/{branch}",
+            ]
+        )
+    else:
+        run(["git", "push", "origin", f"HEAD:refs/heads/{branch}"])
+
+
+def rollback_replacement(branch, previous_sha, replacement_sha):
+    lease = f"--force-with-lease=refs/heads/{branch}:{replacement_sha}"
+    if previous_sha:
+        run(
+            [
+                "git",
+                "push",
+                lease,
+                "origin",
+                f"{previous_sha}:refs/heads/{branch}",
+            ]
+        )
+    else:
+        run(["git", "push", lease, "origin", f":refs/heads/{branch}"])
+
+
+def replace_dependency_branch(ecosystem, branch, repository, checker):
+    pull_request = reserved_pull_request(branch)
+    previous_sha = remote_branch_sha(branch)
+    if pull_request and not previous_sha:
+        raise RuntimeError(
+            f"Reserved pull request #{pull_request['number']} has no remote branch"
+        )
+    if pull_request and pull_request["headRefOid"] != previous_sha:
+        raise RuntimeError(
+            f"Reserved pull request #{pull_request['number']} does not match {branch}"
+        )
+
+    prior_approval_ids = set()
+    if pull_request:
+        prior_approval_ids = {
+            review["id"]
+            for review in approved_reviews(
+                submitted_reviews(repository, pull_request["number"])
+            )
+        }
+
+    replacement_sha = current_sha()
+    run_conflict_check(checker, ecosystem)
+    push_replacement(branch, previous_sha)
+
+    try:
+        if remote_branch_sha(branch) != replacement_sha:
+            raise RuntimeError(f"Reserved branch {branch} did not reach replacement SHA")
+        current_pull_request = reserved_pull_request(branch)
+        if pull_request and (
+            not current_pull_request
+            or current_pull_request["number"] != pull_request["number"]
+        ):
+            raise RuntimeError("Reserved pull request changed during branch replacement")
+        if not current_pull_request:
+            return
+
+        reviews = submitted_reviews(repository, current_pull_request["number"])
+        for review in stale_approvals(reviews, prior_approval_ids, replacement_sha):
+            dismiss_review(repository, current_pull_request["number"], review["id"])
+
+        remaining = stale_approvals(
+            submitted_reviews(repository, current_pull_request["number"]),
+            prior_approval_ids,
+            replacement_sha,
+        )
+        if remaining:
+            ids = ", ".join(str(review["id"]) for review in remaining)
+            raise RuntimeError(f"Stale approvals remain after replacement: {ids}")
+    except Exception as replacement_error:
+        try:
+            rollback_replacement(branch, previous_sha, replacement_sha)
+        except Exception as rollback_error:
+            raise RuntimeError(
+                f"{replacement_error}; rollback also failed: {rollback_error}"
+            ) from rollback_error
+        raise RuntimeError(
+            f"{replacement_error}; restored {branch} to its previous state"
+        ) from replacement_error
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Safely replace a reserved dependency update branch."
+    )
+    parser.add_argument("ecosystem", choices=["cargo", "github-actions"])
+    parser.add_argument("branch")
+    args = parser.parse_args()
+
+    repository = os.environ["GITHUB_REPOSITORY"]
+    checker = os.environ["CONFLICT_CHECKER"]
+    try:
+        replace_dependency_branch(args.ecosystem, args.branch, repository, checker)
+    except (RuntimeError, subprocess.CalledProcessError) as error:
+        print(f"Dependency branch replacement failed: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

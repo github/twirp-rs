@@ -8,6 +8,7 @@ build:
 .PHONY: test
 test:
 	cargo test --features test-support
+	script/test-dependency-automation
 
 .PHONY: lint
 lint:

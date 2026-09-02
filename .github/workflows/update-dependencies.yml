@@ -36,6 +36,7 @@ jobs:
     outputs:
       ecosystem: ${{ steps.ecosystem.outputs.name }}
       branch: ${{ steps.ecosystem.outputs.branch }}
+      base_sha: ${{ steps.base.outputs.sha }}
       blocked: ${{ steps.preflight.outputs.blocked }}
       has_changes: ${{ steps.changes.outputs.has_changes }}
     steps:
@@ -77,8 +78,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Record main revision
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Refuse overlapping dependency pull requests
         id: preflight
@@ -376,7 +382,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.generate.outputs.base_sha }}
           fetch-depth: 0
+
+      - name: Preserve trusted conflict checker
+        run: |
+          cp script/check-dependency-pr-conflicts "$RUNNER_TEMP/check-dependency-pr-conflicts"
+          cp script/push-dependency-update "$RUNNER_TEMP/push-dependency-update"
 
       - name: Download post-updater baseline
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
@@ -550,7 +562,7 @@ jobs:
         if: steps.agent_outputs.outputs.noop != 'true'
         env:
           BRANCH: ${{ needs.generate.outputs.branch }}
-          BASE_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ needs.generate.outputs.base_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -591,7 +603,7 @@ jobs:
         id: staged
         if: steps.agent_outputs.outputs.noop != 'true'
         env:
-          BASE_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ needs.generate.outputs.base_sha }}
           ECOSYSTEM: ${{ needs.generate.outputs.ecosystem }}
           POST_AGENT_TREE: ${{ runner.temp }}/dependency-post-agent-tree
         run: |
@@ -636,6 +648,10 @@ jobs:
         env:
           BRANCH: ${{ needs.generate.outputs.branch }}
           BUNDLE: ${{ runner.temp }}/dependency-update-post-agent
+          CONFLICT_CHECKER: ${{ runner.temp }}/check-dependency-pr-conflicts
+          ECOSYSTEM: ${{ needs.generate.outputs.ecosystem }}
+          GH_TOKEN: ${{ github.token }}
+          PUSHER: ${{ runner.temp }}/push-dependency-update
         run: |
           set -euo pipefail
           title=$(tr -d '\r\n' < "$BUNDLE/pr-title.txt")
@@ -644,14 +660,7 @@ jobs:
           git commit --no-verify -m "$title" \
             -m "Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
 
-          if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
-            expected=$(git rev-parse "origin/$BRANCH")
-            git push \
-              --force-with-lease="refs/heads/$BRANCH:$expected" \
-              origin "HEAD:refs/heads/$BRANCH"
-          else
-            git push origin "HEAD:refs/heads/$BRANCH"
-          fi
+          python3 "$PUSHER" "$ECOSYSTEM" "$BRANCH"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Open or update draft pull request
