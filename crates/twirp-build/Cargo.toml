@@ -15,7 +15,7 @@ license = "MIT"
 
 [dependencies]
 prost-build = "0.14"
-prettyplease = { version = "0.3" }
+prettyplease = { version = "0.2" }
 quote = "1.0"
 syn = "2.0"
 proc-macro2 = "1.0"
