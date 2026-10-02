@@ -164,7 +164,7 @@ mod test {
             .await;
         assert!(res.is_err());
         let err = res.unwrap_err();
-        assert_eq!(err.msg, "inches must be greater than 0");
+        assert_eq!(err.msg(), "inches must be greater than 0");
     }
 
     /// A running network server task, bound to an arbitrary port on localhost, chosen by the OS

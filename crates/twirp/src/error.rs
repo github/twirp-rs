@@ -63,11 +63,13 @@ macro_rules! twirp_error_codes {
         $(
         pub fn $phrase<T: ToString>(msg: T) -> TwirpErrorResponse {
             TwirpErrorResponse {
-                code: TwirpErrorCode::$konst,
-                msg: msg.to_string(),
-                meta: Default::default(),
-                rust_error: None,
-                retry_after: None,
+                inner: Box::new(TwirpErrorResponseInner {
+                    code: TwirpErrorCode::$konst,
+                    msg: msg.to_string(),
+                    meta: Default::default(),
+                    rust_error: None,
+                    retry_after: None,
+                }),
             }
         }
         )+
@@ -158,16 +160,22 @@ impl Serialize for TwirpErrorCode {
 /// NOTE: Twirp error responses are always sent as JSON.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Error)]
 pub struct TwirpErrorResponse {
+    #[serde(flatten)]
+    inner: Box<TwirpErrorResponseInner>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct TwirpErrorResponseInner {
     /// One of the Twirp error codes.
-    pub code: TwirpErrorCode,
+    code: TwirpErrorCode,
 
     /// A human-readable message describing the error.
-    pub msg: String,
+    msg: String,
 
     /// (Optional) An object with string values holding arbitrary additional metadata describing the error.
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde(default)]
-    pub meta: HashMap<String, String>,
+    meta: HashMap<String, String>,
 
     /// (Optional) How long clients should wait before retrying. If set, will be included in the `Retry-After` response
     /// header. Generally only valid for HTTP 429 or 503 responses. NOTE: This is *not* technically part of the twirp
@@ -183,29 +191,39 @@ pub struct TwirpErrorResponse {
 impl TwirpErrorResponse {
     pub fn new(code: TwirpErrorCode, msg: String) -> Self {
         Self {
-            code,
-            msg,
-            meta: HashMap::new(),
-            rust_error: None,
-            retry_after: None,
+            inner: Box::new(TwirpErrorResponseInner {
+                code,
+                msg,
+                meta: HashMap::new(),
+                rust_error: None,
+                retry_after: None,
+            }),
         }
     }
 
+    pub fn code(&self) -> TwirpErrorCode {
+        self.inner.code
+    }
+
+    pub fn msg(&self) -> &str {
+        &self.inner.msg
+    }
+
     pub fn http_status_code(&self) -> StatusCode {
-        self.code.http_status_code()
+        self.code().http_status_code()
     }
 
     pub fn meta_mut(&mut self) -> &mut HashMap<String, String> {
-        &mut self.meta
+        &mut self.inner.meta
     }
 
     pub fn with_meta<S1: ToString, S2: ToString>(mut self, key: S1, value: S2) -> Self {
-        self.meta.insert(key.to_string(), value.to_string());
+        self.inner.meta.insert(key.to_string(), value.to_string());
         self
     }
 
     pub fn retry_after(&self) -> Option<Duration> {
-        self.retry_after
+        self.inner.retry_after
     }
 
     pub fn with_generic_error(self, err: GenericError) -> Self {
@@ -217,17 +235,17 @@ impl TwirpErrorResponse {
     }
 
     pub fn with_rust_error_string(mut self, rust_error: String) -> Self {
-        self.rust_error = Some(rust_error);
+        self.inner.rust_error = Some(rust_error);
         self
     }
 
     pub fn rust_error(&self) -> Option<&String> {
-        self.rust_error.as_ref()
+        self.inner.rust_error.as_ref()
     }
 
     pub fn with_retry_after(mut self, duration: impl Into<Option<Duration>>) -> Self {
         let duration = duration.into();
-        self.retry_after = duration.map(|d| {
+        self.inner.retry_after = duration.map(|d| {
             // Ensure that the duration is at least 1 second, as per HTTP spec.
             if d.as_secs() < 1 {
                 Duration::from_secs(1)
@@ -306,7 +324,7 @@ impl IntoResponse for TwirpErrorResponse {
             .extension(self.clone())
             .header(header::CONTENT_TYPE, crate::headers::CONTENT_TYPE_JSON);
 
-        if let Some(duration) = self.retry_after {
+        if let Some(duration) = self.inner.retry_after {
             resp = resp.header(header::RETRY_AFTER, duration.as_secs().to_string());
         }
 
@@ -318,6 +336,12 @@ impl IntoResponse for TwirpErrorResponse {
 }
 
 impl std::fmt::Display for TwirpErrorResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (*self.inner).fmt(f)
+    }
+}
+
+impl std::fmt::Display for TwirpErrorResponseInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "error {:?}: {}", self.code, self.msg)?;
         if !self.meta.is_empty() {
@@ -344,8 +368,6 @@ impl std::fmt::Display for TwirpErrorResponse {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
     use crate::{TwirpErrorCode, TwirpErrorResponse};
 
     #[test]
@@ -383,17 +405,10 @@ mod test {
 
     #[test]
     fn twirp_error_response_serialization() {
-        let meta = HashMap::from([
-            ("key1".to_string(), "value1".to_string()),
-            ("key2".to_string(), "value2".to_string()),
-        ]);
-        let response = TwirpErrorResponse {
-            code: TwirpErrorCode::DeadlineExceeded,
-            msg: "test".to_string(),
-            meta,
-            rust_error: None,
-            retry_after: None,
-        };
+        let response =
+            TwirpErrorResponse::new(TwirpErrorCode::DeadlineExceeded, "test".to_string())
+                .with_meta("key1", "value1")
+                .with_meta("key2", "value2");
 
         let result = serde_json::to_string(&response).unwrap();
         assert!(result.contains(r#""code":"deadline_exceeded""#));
@@ -425,7 +440,7 @@ mod test {
             .await
             .unwrap_err();
         let twirp_err: TwirpErrorResponse = err.into();
-        assert_eq!(twirp_err.code, TwirpErrorCode::Unavailable);
+        assert_eq!(twirp_err.code(), TwirpErrorCode::Unavailable);
     }
 
     #[test]
@@ -438,18 +453,13 @@ mod test {
             .build()
             .unwrap_err();
         let twirp_err: TwirpErrorResponse = err.into();
-        assert_eq!(twirp_err.code, TwirpErrorCode::InvalidArgument);
+        assert_eq!(twirp_err.code(), TwirpErrorCode::InvalidArgument);
     }
 
     #[test]
     fn twirp_error_response_serialization_skips_fields() {
-        let response = TwirpErrorResponse {
-            code: TwirpErrorCode::Unauthenticated,
-            msg: "test".to_string(),
-            meta: HashMap::new(),
-            rust_error: Some("not included".to_string()),
-            retry_after: None,
-        };
+        let response = TwirpErrorResponse::new(TwirpErrorCode::Unauthenticated, "test".to_string())
+            .with_rust_error_string("not included".to_string());
 
         let result = serde_json::to_string(&response).unwrap();
         assert!(result.contains(r#""code":"unauthenticated""#));
