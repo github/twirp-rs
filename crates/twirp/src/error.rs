@@ -205,12 +205,16 @@ impl TwirpErrorResponse {
         self.inner.code
     }
 
+    pub fn http_status_code(&self) -> StatusCode {
+        self.code().http_status_code()
+    }
+
     pub fn msg(&self) -> &str {
         &self.inner.msg
     }
 
-    pub fn http_status_code(&self) -> StatusCode {
-        self.code().http_status_code()
+    pub fn meta(&self) -> &HashMap<String, String> {
+        &self.inner.meta
     }
 
     pub fn meta_mut(&mut self) -> &mut HashMap<String, String> {
