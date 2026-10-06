@@ -125,7 +125,7 @@ mod test {
             .await;
         assert!(res.is_err());
         let err = res.unwrap_err();
-        assert_eq!(err.code, TwirpErrorCode::InvalidArgument);
+        assert_eq!(err.code(), TwirpErrorCode::InvalidArgument);
     }
 
     /// A running network server task, bound to an arbitrary port on localhost, chosen by the OS
