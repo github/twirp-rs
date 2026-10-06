@@ -11,10 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
-- Use `transparent` instead of `flatten`, which is less efficient. TIL.
-- Address review comment
-- Reduce the size of TwirpErrorResponse
-- Merge pull request #323 from Shiv0087/main
+- Reduce the size of TwirpErrorResponse ([#358](https://github.com/github/twirp-rs/pull/358))
+- Fix a typo ([#323](https://github.com/github/twirp-rs/pull/323))
 
 ## [0.11.1](https://github.com/github/twirp-rs/compare/twirp-v0.11.0...twirp-v0.11.1) - 2026-07-15
 
