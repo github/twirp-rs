@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2](https://github.com/github/twirp-rs/compare/twirp-build-v0.10.1...twirp-build-v0.10.2) - 2026-10-06
+
+### Other
+
+- Bump prettyplease 0.2 -> 0.3 and syn 2.0 -> 3.0
+
 ## [0.10.1](https://github.com/github/twirp-rs/compare/twirp-build-v0.10.0...twirp-build-v0.10.1) - 2026-07-15
 
 ### Other
