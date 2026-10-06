@@ -159,8 +159,8 @@ impl Serialize for TwirpErrorCode {
 ///
 /// NOTE: Twirp error responses are always sent as JSON.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Error)]
+#[serde(transparent)]
 pub struct TwirpErrorResponse {
-    #[serde(flatten)]
     inner: Box<TwirpErrorResponseInner>,
 }
 
