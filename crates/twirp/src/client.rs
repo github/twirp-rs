@@ -177,7 +177,8 @@ impl Client {
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     ///
-    /// The provided `http_client` is used as configured, including its redirect policy.
+    /// Configure redirect handling on `http_client` with
+    /// `reqwest::ClientBuilder::redirect` before passing it here.
     pub fn new(
         base_url: Url,
         http_client: reqwest::Client,
@@ -520,22 +521,15 @@ mod tests {
         let app = axum::Router::new()
             .route(
                 "/twirp/test.TestAPI/Ping",
-                axum::routing::post(|| async {
-                    axum::response::Redirect::temporary("/target")
-                }),
+                axum::routing::post(|| async { axum::response::Redirect::temporary("/target") }),
             )
             .route(
                 "/target",
                 axum::routing::post(|| async {
-                    (
-                        [(CONTENT_TYPE, "application/protobuf")],
-                        Vec::<u8>::new(),
-                    )
+                    ([(CONTENT_TYPE, "application/protobuf")], Vec::<u8>::new())
                 }),
             );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await });
         let base_url = Url::parse(&format!("http://{addr}/twirp/")).unwrap();
