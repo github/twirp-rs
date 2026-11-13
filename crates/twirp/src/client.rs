@@ -55,7 +55,9 @@ impl ClientBuilder<Http> {
         }
     }
 
-    /// Set the HTTP client. Without this a default HTTP client is used.
+    /// Set the HTTP client. Without this a default HTTP client is used, which
+    /// does not follow redirects. To use a different redirect policy, pass a
+    /// configured `reqwest::Client`.
     pub fn with_http_client(mut self, http_client: reqwest::Client) -> Self {
         self.http_client = Some(http_client);
         self
@@ -68,7 +70,7 @@ impl ClientBuilder<Http> {
     pub fn build(self) -> Client {
         Client::from_kind(
             self.base_url,
-            ClientKind::Http(self.http_client.unwrap_or_default()),
+            ClientKind::Http(self.http_client.unwrap_or_else(default_http_client)),
             self.middleware,
         )
     }
@@ -136,6 +138,13 @@ impl ClientBuilder<Direct> {
     }
 }
 
+fn default_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("failed to build default HTTP client")
+}
+
 /// `Client` is a Twirp HTTP client that uses `reqwest::Client` to make http
 /// requests.
 ///
@@ -190,6 +199,9 @@ impl Client {
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
+    ///
+    /// Configure redirect handling on `http_client` with
+    /// `reqwest::ClientBuilder::redirect` before passing it here.
     pub fn new(
         base_url: Url,
         http_client: reqwest::Client,
@@ -223,12 +235,16 @@ impl Client {
         }
     }
 
-    /// Creates a `twirp::Client` with the default `reqwest::ClientBuilder`.
+    /// Creates a `twirp::Client` with a default `reqwest::Client` that does not
+    /// follow redirects.
+    ///
+    /// To use a different redirect policy, provide a configured `reqwest::Client`
+    /// with [`ClientBuilder::with_http_client`] or [`Client::new`].
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
     pub fn from_base_url(base_url: Url) -> Self {
-        Self::new(base_url, reqwest::Client::new(), vec![], None)
+        Self::new(base_url, default_http_client(), vec![], None)
     }
 
     /// The base URL of the service the client will call.
@@ -521,5 +537,38 @@ mod tests {
         let data = resp.into_body();
         assert_eq!(data.name, "hi");
         h.abort()
+    }
+
+    #[tokio::test]
+    async fn test_default_clients_do_not_follow_redirects() {
+        let app = axum::Router::new()
+            .route(
+                "/twirp/test.TestAPI/Ping",
+                axum::routing::post(|| async { axum::response::Redirect::temporary("/target") }),
+            )
+            .route(
+                "/target",
+                axum::routing::post(|| async {
+                    ([(CONTENT_TYPE, "application/protobuf")], Vec::<u8>::new())
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+        let base_url = Url::parse(&format!("http://{addr}/twirp/")).unwrap();
+
+        for client in [
+            Client::from_base_url(base_url.clone()),
+            ClientBuilder::new(base_url).build(),
+        ] {
+            assert!(client
+                .ping(http::Request::new(PingRequest {
+                    name: "hi".to_string(),
+                }))
+                .await
+                .is_err());
+        }
+
+        server.abort();
     }
 }
