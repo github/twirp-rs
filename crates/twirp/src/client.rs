@@ -47,7 +47,9 @@ impl ClientBuilder {
         }
     }
 
-    /// Set the HTTP client. Without this a default HTTP client is used.
+    /// Set the HTTP client. Without this a default HTTP client is used, which
+    /// does not follow redirects. To use a different redirect policy, pass a
+    /// configured `reqwest::Client`.
     pub fn with_http_client(mut self, http_client: reqwest::Client) -> Self {
         self.http_client = Some(http_client);
         self
@@ -174,6 +176,8 @@ impl Client {
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
+    ///
+    /// The provided `http_client` is used as configured, including its redirect policy.
     pub fn new(
         base_url: Url,
         http_client: reqwest::Client,
@@ -207,7 +211,11 @@ impl Client {
         }
     }
 
-    /// Creates a `twirp::Client` with the default `reqwest::ClientBuilder`.
+    /// Creates a `twirp::Client` with a default `reqwest::Client` that does not
+    /// follow redirects.
+    ///
+    /// To use a different redirect policy, provide a configured `reqwest::Client`
+    /// with [`ClientBuilder::with_http_client`] or [`Client::new`].
     ///
     /// The underlying `reqwest::Client` holds a connection pool internally, so it is advised that
     /// you create one and **reuse** it.
